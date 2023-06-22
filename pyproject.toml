@@ -1,0 +1,155 @@
+# peps.python.org/pep-0621
+# packaging.python.org/en/latest/specifications/declaring-project-metadata
+
+
+[project]
+
+
+# GENERAL INFO
+# ============
+
+name = 'aiCode'
+
+keywords = [
+  'Artificial Intelligence',
+  'A.I.',
+  'AI',
+
+  'assisted',
+  'automated',
+
+  'code',
+  'coding',
+]
+
+readme = {file = 'README.md', content-type = 'text/markdown', charset = 'UTF-8'}
+
+
+# AUTHOR(S)/MAINTAINER(S) & LICENSE
+# =================================
+
+authors = [
+  {name = 'The Vinh LUONG (LƯƠNG Thế Vinh)', email = 'TheVinhLuong@gmail.com'},
+]
+maintainers = [
+  {name = 'The Vinh LUONG (LƯƠNG Thế Vinh)', email = 'TheVinhLuong@gmail.com'},
+]
+
+license = {file = 'LICENSE'}
+
+
+# PYTHON VERSION REQUIREMENT
+# ==========================
+
+requires-python = '>= 3.11'
+
+
+# DYNAMIC METADATA
+# ================
+
+dynamic = [
+  # version
+  'version',
+
+  # description & trove classifiers
+  'description',
+  'classifiers',
+
+  # dependencies
+  'dependencies',
+  'optional-dependencies',
+
+  # entry points / scripts
+  'entry-points',
+]
+
+
+# URLs
+# ====
+
+[project.urls]
+Homepage = 'https://GitHub.com/AI-App/aiCode'
+Repository = 'https://GitHub.com/AI-App/aiCode'
+GitHub = 'https://GitHub.com/AI-App/aiCode'
+Documentation = 'https://AI-App.GitHub.io/aiCode'
+
+
+# SETUPTOOLS-SPECIFIC CONFIG
+# ==========================
+# setuptools.pypa.io/en/latest/userguide/pyproject_config.html#setuptools-specific-configuration
+
+[tool.setuptools]
+
+# platforms = []  # array
+
+zip-safe = true
+
+# eager-resources = []  # array
+
+py-modules = []
+
+# packages = []  # array or find directive
+
+# package-dir = {}  # table/inline-table, used when explicitly listing packages
+
+# namespace-packages = []  # array, deprecated
+
+package-data = {}  # table/inline-table
+
+include-package-data = true
+
+exclude-package-data = {}  # table/inline-table
+
+license-files = ['LICEN[CS]E*']  # array of glob patterns
+
+data-files = {}  # table/inline-table, discouraged
+
+# script-files = []  # array, deprecated
+
+provides = []  # array, ignored by pip
+
+obsoletes = []  # array, ignored by pip
+
+
+[tool.setuptools.packages.find]
+where = ['src']
+include = ['*']
+exclude = []
+namespaces = true
+
+
+[tool.setuptools.dynamic]
+
+# version
+version = {file = 'metadata/version'}
+
+# description & trove classifiers
+description = {file = 'metadata/description'}
+classifiers = {file = 'metadata/classifiers'}
+
+# dependencies
+dependencies = {file = 'metadata/requirements/base.txt'}
+
+# entry points / scripts
+entry-points = {file = 'metadata/entry-points'}
+
+# optional depedendencies
+[tool.setuptools.dynamic.optional-dependencies]
+build = {file = 'metadata/requirements/build.txt'}
+dev = {file = 'metadata/requirements/dev.txt'}
+doc = {file = 'metadata/requirements/doc.txt'}
+lint = {file = 'metadata/requirements/lint.txt'}
+publish = {file = 'metadata/requirements/publish.txt'}
+test = {file = 'metadata/requirements/test.txt'}
+
+
+# BUILD SYSTEM
+# (SetUpTools)
+# ============
+
+[build-system]
+requires = [
+  'SetUpTools >= 68.0.0',
+  'Wheel >= 0.40.0',
+]
+build-backend = 'setuptools.build_meta'
