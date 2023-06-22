@@ -1,0 +1,5 @@
+# LARGE FOUNDATIONAL MODELS & related
+# ===================================
+
+LangChain >= 0.0.209
+OpenAI >= 0.27.8
