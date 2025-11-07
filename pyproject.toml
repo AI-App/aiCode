@@ -17,12 +17,13 @@ keywords = [
 
   'assisted',
   'automated',
+  'autonomous',
 
   'code',
   'coding',
 ]
 
-readme = {file = 'README.md', content-type = 'text/markdown', charset = 'UTF-8'}
+readme = {file = 'README.md', content-type = 'text/markdown'}
 
 
 # AUTHOR(S)/MAINTAINER(S) & LICENSE
@@ -41,7 +42,7 @@ license = {file = 'LICENSE'}
 # PYTHON VERSION REQUIREMENT
 # ==========================
 
-requires-python = '>= 3.11'
+requires-python = '>= 3.14'
 
 
 # DYNAMIC METADATA
@@ -148,8 +149,5 @@ test = {file = 'metadata/requirements/test.txt'}
 # ============
 
 [build-system]
-requires = [
-  'SetUpTools >= 68.0.0',
-  'Wheel >= 0.40.0',
-]
+requires = ['SetUpTools >= 80.9']
 build-backend = 'setuptools.build_meta'
