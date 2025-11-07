@@ -1,7 +1,15 @@
-PYTHON
-======
+PYTHON & related
+================
 
 __pycache__/
 *.pyc
 dist/
 *.egg-info/
+uv.lock
+.venv/
+
+
+GITHUB & VISUAL STUDIO CODE
+===========================
+
+# .github/instructions/codacy.instructions.md
