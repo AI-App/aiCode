@@ -1,0 +1,33 @@
+{
+  "recommendations": [
+    "aitomatic.dana-language",  // Dana agent-native programming language (Aitomatic)
+
+    "anthropic.claude-code",  // Claude Code (Anthropic)
+
+    "anysphere.remote-wsl",  // Windows Subsystem for Linux (Anysphere)
+
+    "openai.chatgpt",  // Codex (OpenAI)
+
+    "ms-python.flake8",  // Flake8 (Microsoft)
+    "ms-python.pylint",  // PyLint (Microsoft)
+
+    "charliermarsh.ruff",  // Ruff
+
+    "davidanson.vscode-markdownlint",  // MarkdownLint
+
+    "tamasfe.even-better-toml",  // Even Better TOML
+
+    "github.vscode-pull-request-github",  // GitHub Pull Request
+
+    "soulcode.vscode-unwanted-recommendations",  // Unwanted Recommendations
+  ],
+
+  "unwantedRecommendations": [
+    "ms-python.autopep8",  // AutoPEP8 (Microsoft)
+    "ms-python.black-formatter",  // Black Formatter (Microsoft)
+    "eeyore.yapf",  // Yet Another Python Formatter
+
+    "ms-python.mypy-type-checker",  // MyPy Type Checker (Microsoft)
+    "matangover.mypy",  // MyPy
+  ]
+}
