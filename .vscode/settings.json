@@ -1,14 +1,46 @@
 {
   "editor.rulers": [
-    79
+    88
   ],
+
+  // AUTO-SAVE
+  // =========
+  "files.autoSave": "afterDelay",
+
+  // HIDE CERTAIN DIRECTORIES & FILES
+  // ================================
   "files.exclude": {
-    "**/.git": true,
-    "**/.mypy_cache": true,
-    "**/__pycache__": true,
-    "**/.pytest_cache": true,
-    "**/.ropeproject": true,
+    // PYTHON & RELATED
+    // ================
+    "**/__pycache__": true, // compiled Python code
+    "**/build": true, // Python package build directory
+    "**/dist": false, // Python package distribution directory
+    "**/*.egg-info": true, // Python package info
+    "**/.mypy_cache": true, // MyPy cache
+    "**/.pytest_cache": true, // PyTest cache
+    "**/.ropeproject": true, // Rope project
+    "**/.ruff_cache": true, // Ruff cache
+    "**/uv.lock": true, // UV project lock file
+    "**/.venv": false, // Virtual environment
+
+    // GIT & RELATED
+    // =============
+    "**/.gitkeep": true, // Git keep file
+
+    // MISC / OTHER
+    // ============
+    "**/.DS_Store": true, // Mac OS X system file
+    "**/Thumbs.db": true, // Windows system file
   },
+
+  // HANDLE WHITESPACES
+  // ==================
+  "files.trimTrailingWhitespace": true, // Remove trailing whitespace on save
+  "files.insertFinalNewline": true, // Ensure files end with a newline
+  "files.trimFinalNewlines": true, // Remove multiple final newlines
+
+  // PYTHON
+  // ======
   "python.analysis.diagnosticSeverityOverrides": {
     "reportMissingImports": "none",
     "reportUndefinedVariable": "none",
