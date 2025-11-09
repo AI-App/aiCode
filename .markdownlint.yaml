@@ -1,0 +1,54 @@
+MD005: false
+list-indent: false
+
+MD007: false
+ul-indent: false
+
+MD012: false
+no-multiple-blanks: false
+
+MD013: false
+line-length: false
+
+MD022: false
+blanks-around-headings: false
+
+MD024: false
+no-duplicate-heading: false
+
+MD026: false
+no-trailing-punctuation: false
+
+MD029: false
+ol-prefix: false
+
+MD031: false
+blanks-around-fences: false
+
+MD032: false
+blanks-around-lists: false
+
+MD033: false
+no-inline-html: false
+
+MD034: false
+no-bare-urls: false
+
+MD036: false
+no-emphasis-as-heading: false
+
+MD040: false
+fenced-code-language: false
+
+MD041: false
+first-line-heading: false
+first-line-h1: false
+
+MD046: false
+code-block-style: false
+
+MD050: false
+strong-style: false
+
+MD058: false
+blanks-around-tables: false
