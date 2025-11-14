@@ -8,6 +8,10 @@
 
     "openai.chatgpt",  // Codex (OpenAI)
 
+    "continue.continue",  // Continue (Continue)
+    "kilocode.kilocode",  // Kilo Code (KiloCode)
+    "supermaven.supermaven",  // SuperMaven (SuperMaven)
+
     "ms-python.flake8",  // Flake8 (Microsoft)
     "ms-python.pylint",  // PyLint (Microsoft)
 
