@@ -129,8 +129,209 @@ alwaysApply: true
 - Apply this principle especially when converting between different indexing systems, number formats, or representation types (e.g., converting 1-based positions to 0-based array indices, or between string identifiers and integer IDs).
 - **When in doubt, be MORE explicit, not less.**
 
+## KISS Principle: Keep It Simple, Stupid
+
+### Principle: Do Not Create Redundant Parameters or Interfaces
+- **MANDATORY**: Do not add optional parameters, variables, or interface complexity beyond what is actually required for the operation.
+- **Question every parameter**: Before adding an optional parameter, ask:
+  - Is this parameter actually needed for the operation to succeed?
+  - Can this information be obtained from existing attributes or context?
+  - Is this just for display/cosmetic purposes that could be handled internally?
+  - Will this parameter be used by the caller, or is it just being passed through?
+- **Avoid parameter passing for internal concerns**: If information is only needed for internal implementation details (like display formatting, logging context, etc.), it should be handled internally, not passed as parameters.
+- **Avoid redundant optional parameters**: Do not create optional parameters that duplicate information already available in the class or can be derived from existing context.
+- **Example of good practice**:
+  ```python
+  # Clean - no redundant parameters
+  def populate_schema_in_neo4j(self) -> dict:
+      # Manager accessed internally, building name not needed
+      manager = self._get_neo4j_manager()
+      # ... implementation ...
+  ```
+- **Example of bad practice** (DO NOT USE):
+  ```python
+  # ❌ Redundant parameters - manager is already available internally
+  def populate_schema_in_neo4j(self, manager: Neo4jConnectionManager) -> dict:
+      # ... implementation ...
+
+  # ❌ Redundant parameter - building name only used for display
+  def populate_schema_in_neo4j(self, building_name: Optional[str] = None) -> dict:
+      if building_name:
+          print(f"Building: {building_name}")  # Only for display
+      # ... implementation ...
+
+  # ❌ Redundant - both parameters do the same thing (identify asset type)
+  def upsert_asset(self, uuid: str, name: str,
+                   asset_type_uri: Optional[str] = None,
+                   asset_type_name: Optional[str] = None,
+                   asset_type_id: Optional[str] = None) -> dict:  # ❌ Too many ways to specify same thing
+      # ... implementation ...
+  ```
+- **When optional parameters are acceptable**:
+  - When they provide genuinely different functionality (e.g., `asset_type_uri` vs `asset_type_name` - one is direct, one requires normalization)
+  - When they are user-facing configuration options (e.g., `chunk_size` for bulk operations, `progress_callback` for progress reporting)
+  - When they are required for the operation but have sensible defaults
+
+### Principle: Do Not Hoard Ephemeral State as Attributes
+- **MANDATORY**: Do not keep one-shot or ephemeral inputs (like raw config dictionaries or file paths) as long-lived attributes if they are only needed to construct more stable dependencies (e.g., connection managers, schema objects).
+- If a value is **passed once and immediately used** to build a durable dependency, prefer:
+  - Using it directly inside the factory/loader method, and
+  - Storing **only the durable dependency** (e.g., `Neo4jConnectionManager`, `Neo4jDatabaseConfig`, `PhysicalOntologySchema`) on the instance.
+- **Example of good practice**:
+  ```python
+  class AutonomousBuildingOntology:
+      def __init__(self, cognitive_ontology, physical_ontology, neo4j_manager):
+          self.cognitive_ontology = cognitive_ontology
+          self.physical_ontology = physical_ontology
+          self._neo4j_manager = neo4j_manager  # stable dependency
+
+      @classmethod
+      def load(cls, config_dict: dict) -> "AutonomousBuildingOntology":
+          # Use config once to build manager; do not store raw config on self
+          neo4j_config_data = config_dict["ontology"]["physical"]["neo4j-db"]
+          neo4j_config = Neo4jDatabaseConfig(... from neo4j_config_data ...)
+          neo4j_manager = Neo4jConnectionManager(neo4j_config)
+          physical_ontology = PhysicalOntology.load(config_dict)
+          cognitive_ontology = CognitiveOntology()
+          physical_ontology._neo4j_manager = neo4j_manager
+          cognitive_ontology._neo4j_manager = neo4j_manager
+          return cls(cognitive_ontology=cognitive_ontology,
+                     physical_ontology=physical_ontology,
+                     neo4j_manager=neo4j_manager)
+  ```
+- **Example of bad practice** (DO NOT USE):
+  ```python
+  class AutonomousBuildingOntology:
+      def __init__(self, cognitive_ontology, physical_ontology, config_dict: dict):
+          self.cognitive_ontology = cognitive_ontology
+          self.physical_ontology = physical_ontology
+          self._config_data = config_dict  # ❌ hoarded raw config
+          self._neo4j_manager: Optional[Neo4jConnectionManager] = None
+
+      def get_neo4j_connection_manager(self) -> Neo4jConnectionManager:
+          if self._neo4j_manager is None:
+              # ❌ repeatedly dig into raw config stored on self
+              cfg = self._config_data["ontology"]["physical"]["neo4j-db"]
+              neo4j_config = Neo4jDatabaseConfig(... from cfg ...)
+              self._neo4j_manager = Neo4jConnectionManager(neo4j_config)
+          return self._neo4j_manager
+  ```
+- Prefer storing **what the object is about** (ontology instances, schemas, managers) rather than transient inputs used only to build those objects.
+
+## Hierarchical Class Design and Abstraction Levels
+
+### Principle: Higher-Level Classes Should Be Cleaner and More Public
+- **MANDATORY**: Higher-level classes (closer to user code) should be cleaner, more public, and contain less boilerplate than lower-level classes.
+- User-level code (the highest level) should be extremely clean and readable, focusing on what needs to be done, not how it's done.
+- Higher-level classes should act as thin orchestration layers that delegate to lower-level domain classes.
+- **Example of good practice**:
+  ```python
+  # High-level class (AutonomousBuilding) - Clean and simple
+  def populate_physical_ontology_schema_in_neo4j(self) -> dict:
+      return self.ontology.physical_ontology.populate_schema_in_neo4j()
+
+  # Lower-level class (PhysicalOntology) - Handles implementation details
+  def populate_schema_in_neo4j(self) -> dict:
+      # All printing, error handling, user-facing output happens here
+      # Manager accessed internally via self._get_neo4j_manager()
+      print("=" * 70)
+      print("Populate Physical Ontology Schema in Neo4j")
+      # ... error handling, progress display, result formatting ...
+      return result
+  ```
+- **Example of bad practice** (DO NOT USE):
+  ```python
+  # High-level class - Too much boilerplate
+  def populate_physical_ontology_schema_in_neo4j(self) -> dict:
+      import traceback
+      print("=" * 70)
+      print("Populate Physical Ontology Schema in Neo4j")
+      try:
+          manager = self.ontology.get_neo4j_connection_manager()
+          print("✅ Connection manager obtained")
+      except Exception as e:
+          print(f"❌ Error: {e}")
+          traceback.print_exc()
+          raise
+      # ... more boilerplate ...
+  ```
+
+### Principle: DRY for Error Handling and Logging (Right Abstraction Level)
+- **MANDATORY**: Error handling, printing, logging, and user-facing output should be implemented at the **right abstraction level** and **not repeated** across multiple levels of the class hierarchy.
+- **Single Responsibility**: Each abstraction level should handle its own concerns:
+  - **High-level classes**: Thin orchestration, minimal code, delegate to domain classes
+  - **Domain classes**: Handle domain-specific logic, error handling, user-facing output, and presentation
+  - **Utility classes**: Handle low-level operations without user-facing concerns
+- **DRY Principle**: Do not repeat error handling, printing, or logging at multiple levels. Choose the appropriate level and implement it once.
+- **Guidelines**:
+  - If a method is user-facing (called directly by user code), its error handling and output should be in the **domain class** that implements the operation, not in the high-level wrapper.
+  - High-level classes should be so clean that they read like configuration or declarative code.
+  - Lower-level classes own the "how" - including how errors are handled and how progress is communicated.
+- **Example of good practice**:
+  ```python
+  # High-level: Just delegates
+  def upsert_asset(self, uuid: str, name: str) -> dict:
+      return self.ontology.physical_ontology.upsert_asset(uuid, name)
+
+  # Domain class: Handles all error handling, validation, user feedback
+  # Manager accessed internally via self._get_neo4j_manager()
+  def upsert_asset(self, uuid: str, name: str) -> dict:
+      if not uuid:
+          raise ValueError("Asset UUID is required")
+      # ... implementation with error handling ...
+  ```
+- **Example of bad practice** (DO NOT USE):
+  ```python
+  # High-level: Repeats error handling
+  def upsert_asset(self, uuid: str, name: str) -> dict:
+      try:
+          if not uuid:
+              raise ValueError("Asset UUID is required")  # ❌ Validation at wrong level
+          return self.ontology.physical_ontology.upsert_asset(uuid, name)
+      except Exception as e:  # ❌ Error handling repeated
+          print(f"Error: {e}")
+          raise
+
+  # Domain class: Also has error handling (duplication)
+  def upsert_asset(self, uuid: str, name: str) -> dict:
+      if not uuid:
+          raise ValueError("Asset UUID is required")  # ❌ Duplicated validation
+      try:
+          # ... implementation ...
+      except Exception as e:  # ❌ Error handling repeated
+          print(f"Error: {e}")
+          raise
+  ```
+
+### Principle: User-Level Code Should Be Extremely Clean
+- The highest level of code (user scripts, main entry points) should read like declarative configuration.
+- User code should focus on **what** needs to be done, not **how** it's done.
+- All complexity, error handling, and implementation details should be encapsulated in appropriate domain classes.
+- **Example of good practice**:
+  ```python
+  # User-level code - Extremely clean
+  building = AutonomousBuilding.load(building_dir)
+  result = building.populate_physical_ontology_schema_in_neo4j()
+  print(f"Created {result['asset_types']['created']} asset types")
+  ```
+- **Example of bad practice** (DO NOT USE):
+  ```python
+  # User-level code - Too much boilerplate
+  building = AutonomousBuilding.load(building_dir)
+  try:
+      print("Starting population...")
+      manager = building._get_neo4j_connection_manager()  # ❌ Exposing internals
+      result = building.ontology.physical_ontology.populate_schema_in_neo4j()
+      print("✅ Success")
+  except Exception as e:  # ❌ Error handling at user level
+      print(f"❌ Error: {e}")
+      traceback.print_exc()
+  ```
+
 ## Benefits
 - **Discoverability**: Public API is immediately visible at the top of the class, allowing readers to quickly understand what the class does
 - **Readability**: Clear separation between public interface and implementation details; within each section, dependencies appear before dependents
-- **Maintainability**: Clear separation between public API, helpers, and domain logic
+- **Maintainability**: Clear separation between public API, helpers, and domain logic; error handling and logging in one place reduces duplication
 - **Debugging**: When diving into implementation, dependency ordering within sections makes execution flow easier to trace
+- **Clean User Code**: Higher-level classes are thin orchestration layers, resulting in extremely clean and readable user-level code
+- **DRY Compliance**: Error handling, logging, and user-facing output implemented once at the right abstraction level, eliminating repetition
