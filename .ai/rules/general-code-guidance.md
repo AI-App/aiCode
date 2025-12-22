@@ -376,6 +376,93 @@ alwaysApply: true
   - When the script is part of a larger framework that expects this pattern
 - For most scripts, tools, and operational code, the `def main()` + `if __name__ == "__main__":` pattern only adds visual noise and indirection without providing value.
 
+## Module Organization and `__init__.py` Files
+
+### Principle: Keep `__init__.py` Files Light
+- **MANDATORY**: `__init__.py` files should be kept lightweight and serve primarily as import aggregation points.
+- Their main purpose is to expose the public API of a package by importing from lower-level modules.
+- Implementation code (classes, functions, constants) should live in dedicated module files, not in `__init__.py`.
+
+### Guidelines for `__init__.py` Files
+1. **Primary Purpose**: Re-export public APIs from submodules
+2. **Keep It Minimal**: Typically 10-50 lines, mostly imports and `__all__` definitions
+3. **No Heavy Implementation**: Move classes, functions, and complex logic to dedicated module files
+4. **What Belongs in `__init__.py`**:
+   - Module-level constants (if truly module-scoped, not implementation-specific)
+   - Imports from submodules
+   - `__all__` list for explicit public API declaration
+   - Brief module docstring
+5. **What Does NOT Belong in `__init__.py`**:
+   - Class definitions (put in dedicated module files)
+   - Function implementations (put in dedicated module files)
+   - Complex initialization logic
+   - Heavy imports that slow down module loading
+
+### Example of Good Practice
+```python
+# my_package/__init__.py
+"""
+My Package - Brief description of what this package does.
+"""
+
+# Module-level constants
+DEFAULT_TIMEOUT: int = 30
+
+# Import from submodules
+from my_package.connection_manager import ConnectionManager, create_connection
+from my_package.queries import execute_query, QueryBuilder
+from my_package.utils import parse_config, validate_input
+
+__all__ = [
+    'DEFAULT_TIMEOUT',
+    'ConnectionManager',
+    'create_connection',
+    'execute_query',
+    'QueryBuilder',
+    'parse_config',
+    'validate_input',
+]
+```
+
+### Example of Bad Practice (DO NOT USE)
+```python
+# my_package/__init__.py
+"""My Package"""
+
+from typing import Optional, Dict, Any
+import os
+import sys
+
+# ❌ Class definition in __init__.py (should be in dedicated module)
+class ConnectionManager:
+    def __init__(self, config: Dict[str, Any]):
+        self.config = config
+        self._connection = None
+
+    def connect(self) -> None:
+        # 100+ lines of implementation
+        pass
+
+    # ... more methods ...
+
+# ❌ Function definitions in __init__.py (should be in dedicated module)
+def execute_query(query: str, params: Optional[Dict] = None):
+    # 50+ lines of implementation
+    pass
+
+# ❌ Heavy initialization logic
+_global_config = load_config_from_file()  # Slows down import
+_connection_pool = initialize_pool()      # Side effects on import
+```
+
+### Benefits of Lightweight `__init__.py`
+- **Fast Imports**: Module loads quickly without executing heavy initialization
+- **Clear Organization**: Implementation lives in logical, dedicated modules
+- **Maintainability**: Easy to find where code is actually defined
+- **Testing**: Can test individual modules without importing the entire package
+- **Circular Import Prevention**: Reduces risk of circular import issues
+- **Discoverability**: `__init__.py` serves as a clean table of contents for the package API
+
 ## Benefits
 - **Discoverability**: Public API is immediately visible at the top of the class, allowing readers to quickly understand what the class does
 - **Readability**: Clear separation between public interface and implementation details; within each section, dependencies appear before dependents
@@ -383,3 +470,4 @@ alwaysApply: true
 - **Debugging**: When diving into implementation, dependency ordering within sections makes execution flow easier to trace
 - **Clean User Code**: Higher-level classes are thin orchestration layers, resulting in extremely clean and readable user-level code
 - **DRY Compliance**: Error handling, logging, and user-facing output implemented once at the right abstraction level, eliminating repetition
+- **Fast Module Loading**: Lightweight `__init__.py` files ensure quick imports and avoid side effects
