@@ -328,6 +328,54 @@ alwaysApply: true
       traceback.print_exc()
   ```
 
+### Principle: Avoid `def main()` and `if __name__ == '__main__':` Boilerplate
+- **MANDATORY**: Prefer **straight-line top-level code** over verbose `def main()` + `if __name__ == "__main__":` boilerplate in most cases.
+- This applies to scripts, tools, and operational code that are primarily executed directly rather than imported as modules.
+- Scripts should read like a short shell pipeline:
+  - Imports
+  - A small number of helpers (if needed)
+  - A single, top-level "do the thing" flow.
+- **Example of good practice**:
+  ```python
+  #!/usr/bin/env python3
+  from pathlib import Path
+  from autonomous_building import AutonomousBuilding
+  from autonomous_building.util import load_env
+
+  def _get_building_dir() -> Path:
+      script_path = Path(__file__).resolve()
+      return script_path.parent.parent  # buildings/devtest
+
+  def _delete_label(session, label: str) -> dict:
+      # ... helper implementation ...
+      return {"before_count": before_count, "deleted_count": deleted_count}
+
+  load_env()
+  building_dir = _get_building_dir()
+  building = AutonomousBuilding.load(building_dir)
+  manager = building.ontology.get_neo4j_connection_manager()
+
+  with manager.session(default_access_mode="WRITE") as session:
+      for label in ["Asset", "Point"]:
+          stats = _delete_label(session, label)
+          print(label, stats)
+  ```
+- **Example of bad practice** (DO NOT USE):
+  ```python
+  #!/usr/bin/env python3
+  def main() -> None:
+      # 100+ lines of operational script logic
+      ...
+
+  if __name__ == "__main__":
+      main()
+  ```
+- **When `def main()` + guard patterns are acceptable**:
+  - Modules that are **both** imported and executed (e.g., library modules that can also be run as scripts)
+  - Cases where testing/entrypoint reuse explicitly requires it
+  - When the script is part of a larger framework that expects this pattern
+- For most scripts, tools, and operational code, the `def main()` + `if __name__ == "__main__":` pattern only adds visual noise and indirection without providing value.
+
 ## Benefits
 - **Discoverability**: Public API is immediately visible at the top of the class, allowing readers to quickly understand what the class does
 - **Readability**: Clear separation between public interface and implementation details; within each section, dependencies appear before dependents
