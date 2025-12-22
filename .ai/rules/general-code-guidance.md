@@ -398,6 +398,28 @@ alwaysApply: true
    - Complex initialization logic
    - Heavy imports that slow down module loading
 
+### Principle: Prefer Relative Imports in `__init__.py` Files
+- **MANDATORY**: Within a package, `__init__.py` files should use **relative imports** (`.module_name`) to import from sibling modules.
+- Relative imports make the code more readable and maintainable by avoiding verbose absolute paths.
+- Absolute imports are still appropriate for:
+  - Importing from external packages
+  - Importing from parent packages or unrelated modules
+  - Top-level module imports where relative imports would be unclear
+
+### Guidelines for Import Styles
+
+**Use Relative Imports:**
+- In `__init__.py` files when importing from sibling modules in the same package
+- In module files when importing from sibling modules in the same package
+- Pattern: `from .module_name import ClassName`
+- Pattern: `from ..parent_module import SomethingElse` (when importing from parent)
+
+**Use Absolute Imports:**
+- When importing from external packages (e.g., `from pathlib import Path`)
+- When importing from unrelated modules in the codebase
+- When the relative path would be unclear or overly complex
+- At the top-level of the package structure (where relative imports don't make sense)
+
 ### Example of Good Practice
 ```python
 # my_package/__init__.py
@@ -408,10 +430,10 @@ My Package - Brief description of what this package does.
 # Module-level constants
 DEFAULT_TIMEOUT: int = 30
 
-# Import from submodules
-from my_package.connection_manager import ConnectionManager, create_connection
-from my_package.queries import execute_query, QueryBuilder
-from my_package.utils import parse_config, validate_input
+# Import from submodules using RELATIVE imports (within same package)
+from .connection_manager import ConnectionManager, create_connection
+from .queries import execute_query, QueryBuilder
+from .utils import parse_config, validate_input
 
 __all__ = [
     'DEFAULT_TIMEOUT',
@@ -421,6 +443,50 @@ __all__ = [
     'QueryBuilder',
     'parse_config',
     'validate_input',
+]
+```
+
+### Example of Bad Practice (DO NOT USE)
+```python
+# my_package/__init__.py - AVOID THIS
+"""My Package"""
+
+# ❌ WRONG: Using absolute imports for sibling modules
+from my_package.connection_manager import ConnectionManager, create_connection
+from my_package.queries import execute_query, QueryBuilder
+from my_package.utils import parse_config, validate_input
+
+__all__ = [...]
+```
+
+### Real-World Example: Agent Package
+
+**Good (Relative Imports):**
+```python
+# autonomous_building/costar_agent_system/agents/curation/__init__.py
+"""Curation agents for data and knowledge management."""
+
+from .physical_ontology_agent import PhysicalOntologyAgent
+from .logical_ontology_agent import LogicalOntologyAgent
+
+__all__ = [
+    "PhysicalOntologyAgent",
+    "LogicalOntologyAgent",
+]
+```
+
+**Bad (Absolute Imports - Unnecessarily Verbose):**
+```python
+# autonomous_building/costar_agent_system/agents/curation/__init__.py
+"""Curation agents for data and knowledge management."""
+
+# ❌ AVOID: Unnecessarily long absolute imports for sibling modules
+from autonomous_building.costar_agent_system.agents.curation.physical_ontology_agent import PhysicalOntologyAgent
+from autonomous_building.costar_agent_system.agents.curation.logical_ontology_agent import LogicalOntologyAgent
+
+__all__ = [
+    "PhysicalOntologyAgent",
+    "LogicalOntologyAgent",
 ]
 ```
 
