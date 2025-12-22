@@ -131,6 +131,56 @@ alwaysApply: true
 
 ## KISS Principle: Keep It Simple, Stupid
 
+### Principle: Abstract Implementation Details Away from Client Code
+- **MANDATORY**: When implementation details (like database access modes, internal state management, or protocol-specific concerns) can be automatically inferred or detected, abstract them away from the client API.
+- **Automatic Detection**: If the system can determine the correct behavior from the input (e.g., detecting read vs write operations from query text), do so automatically rather than requiring the client to specify it.
+- **Reduce API Surface**: Prefer fewer, smarter methods over many specialized methods. A single method that adapts its behavior is often simpler than multiple methods for different cases.
+- **Hide Complexity**: Clients should not need to know about internal implementation details (like Neo4j access modes, connection pooling strategies, or protocol-specific flags) unless they genuinely need control over them.
+- **Example of good practice**:
+  ```python
+  # Single method that automatically detects read vs write operations
+  def query_neo4j(self, cypher_query: str, parameters: Optional[dict] = None) -> list[dict]:
+      """
+      Execute a Cypher query. Automatically detects read vs write operations
+      based on query keywords (CREATE, DELETE, SET, etc.).
+      """
+      # Automatically detect write operations from query text
+      is_write = any(keyword in cypher_query.upper() for keyword in
+                     ['CREATE', 'DELETE', 'SET ', 'REMOVE ', 'MERGE'])
+      access_mode = "WRITE" if is_write else "READ"
+
+      with manager.session(default_access_mode=access_mode) as session:
+          return [dict(record) for record in session.run(cypher_query, parameters or {})]
+
+  # Client code - simple and clean
+  results = building.query_neo4j("MATCH (a:Asset) RETURN a.name")  # Read - auto-detected
+  building.query_neo4j("CREATE (a:Asset {name: $name})", {"name": "New Asset"})  # Write - auto-detected
+  ```
+- **Example of bad practice** (DO NOT USE):
+  ```python
+  # ❌ Exposes implementation details (Neo4j access modes) to clients
+  def query_neo4j_read(self, cypher_query: str, parameters: Optional[dict] = None) -> list[dict]:
+      with manager.session(default_access_mode="READ") as session:
+          return [dict(record) for record in session.run(cypher_query, parameters or {})]
+
+  def query_neo4j_write(self, cypher_query: str, parameters: Optional[dict] = None) -> list[dict]:
+      with manager.session(default_access_mode="WRITE") as session:
+          return [dict(record) for record in session.run(cypher_query, parameters or {})]
+
+  # Client code - must know about implementation details
+  results = building.query_neo4j_read("MATCH (a:Asset) RETURN a.name")  # ❌ Client must choose
+  building.query_neo4j_write("CREATE (a:Asset {name: $name})", {"name": "New Asset"})  # ❌ Client must know
+  ```
+- **When to expose implementation details**:
+  - When clients genuinely need fine-grained control (e.g., performance tuning, special use cases)
+  - When the abstraction would be misleading or hide important behavior
+  - When the implementation detail is part of the domain model (not just a technical detail)
+- **Benefits**:
+  - **Simpler API**: Fewer methods to learn and remember
+  - **Less Error-Prone**: Clients can't accidentally use the wrong method
+  - **Better Encapsulation**: Implementation details can change without affecting client code
+  - **Cleaner Client Code**: Focus on what needs to be done, not how it's done
+
 ### Principle: Do Not Create Redundant Parameters or Interfaces
 - **MANDATORY**: Do not add optional parameters, variables, or interface complexity beyond what is actually required for the operation.
 - **Question every parameter**: Before adding an optional parameter, ask:
