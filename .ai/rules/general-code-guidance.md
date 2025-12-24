@@ -129,57 +129,50 @@ alwaysApply: true
 - Apply this principle especially when converting between different indexing systems, number formats, or representation types (e.g., converting 1-based positions to 0-based array indices, or between string identifiers and integer IDs).
 - **When in doubt, be MORE explicit, not less.**
 
-## KISS Principle: Keep It Simple, Stupid
+## KISS and YAGNI Principles: Simplicity and Minimalism
 
-### Principle: Abstract Implementation Details Away from Client Code
-- **MANDATORY**: When implementation details (like database access modes, internal state management, or protocol-specific concerns) can be automatically inferred or detected, abstract them away from the client API.
-- **Automatic Detection**: If the system can determine the correct behavior from the input (e.g., detecting read vs write operations from query text), do so automatically rather than requiring the client to specify it.
-- **Reduce API Surface**: Prefer fewer, smarter methods over many specialized methods. A single method that adapts its behavior is often simpler than multiple methods for different cases.
-- **Hide Complexity**: Clients should not need to know about internal implementation details (like Neo4j access modes, connection pooling strategies, or protocol-specific flags) unless they genuinely need control over them.
-- **Example of good practice**:
+### Principle: YAGNI - You Aren't Gonna Need It
+- **MANDATORY**: Do not add features, parameters, or complexity until they are actually needed.
+- **Start minimal**: Begin with the simplest implementation that solves the current problem.
+- **Resist speculation**: Don't add "nice to have" features or parameters "just in case" they might be useful later.
+- **Evidence required**: Only add complexity when there is concrete evidence of need (actual usage, explicit requirements).
+- **Question every addition**: Before adding any optional parameter or feature, ask:
+  - Is this actually being used right now?
+  - Is there concrete evidence this will be needed?
+  - Can we add it later if/when it's actually needed?
+  - What's the cost of maintaining this if it's never used?
+- **Example of good practice (YAGNI applied)**:
   ```python
-  # Single method that automatically detects read vs write operations
-  def query_neo4j(self, cypher_query: str, parameters: Optional[dict] = None) -> list[dict]:
-      """
-      Execute a Cypher query. Automatically detects read vs write operations
-      based on query keywords (CREATE, DELETE, SET, etc.).
-      """
-      # Automatically detect write operations from query text
-      is_write = any(keyword in cypher_query.upper() for keyword in
-                     ['CREATE', 'DELETE', 'SET ', 'REMOVE ', 'MERGE'])
-      access_mode = "WRITE" if is_write else "READ"
+  # Clean API - only what's needed
+  def run_query(self, cypher_query: str, parameters: Optional[Dict] = None) -> Result:
+      """Execute query with config database."""
+      mode = self._infer_query_mode(cypher_query)
+      # Uses self.config.database by default
+      return self.execute_write(query, params) if mode == "WRITE" else self.execute_read(query, params)
 
-      with manager.session(default_access_mode=access_mode) as session:
-          return [dict(record) for record in session.run(cypher_query, parameters or {})]
-
-  # Client code - simple and clean
-  results = building.query_neo4j("MATCH (a:Asset) RETURN a.name")  # Read - auto-detected
-  building.query_neo4j("CREATE (a:Asset {name: $name})", {"name": "New Asset"})  # Write - auto-detected
+  # If database override is needed later, add it to mid-level methods:
+  result = manager.execute_read(query, params, database="system")  # Override when actually needed
   ```
 - **Example of bad practice** (DO NOT USE):
   ```python
-  # ❌ Exposes implementation details (Neo4j access modes) to clients
-  def query_neo4j_read(self, cypher_query: str, parameters: Optional[dict] = None) -> list[dict]:
-      with manager.session(default_access_mode="READ") as session:
-          return [dict(record) for record in session.run(cypher_query, parameters or {})]
-
-  def query_neo4j_write(self, cypher_query: str, parameters: Optional[dict] = None) -> list[dict]:
-      with manager.session(default_access_mode="WRITE") as session:
-          return [dict(record) for record in session.run(cypher_query, parameters or {})]
-
-  # Client code - must know about implementation details
-  results = building.query_neo4j_read("MATCH (a:Asset) RETURN a.name")  # ❌ Client must choose
-  building.query_neo4j_write("CREATE (a:Asset {name: $name})", {"name": "New Asset"})  # ❌ Client must know
+  # ❌ Premature optimization - database override not used anywhere
+  def run_query(self, cypher_query: str, parameters: Optional[Dict] = None,
+                database: Optional[str] = None) -> Result:  # ❌ YAGNI violation
+      """Execute query."""
+      mode = self._infer_query_mode(cypher_query)
+      db = database or self.config.database  # Added complexity for zero usage
+      # ...
   ```
-- **When to expose implementation details**:
-  - When clients genuinely need fine-grained control (e.g., performance tuning, special use cases)
-  - When the abstraction would be misleading or hide important behavior
-  - When the implementation detail is part of the domain model (not just a technical detail)
-- **Benefits**:
-  - **Simpler API**: Fewer methods to learn and remember
-  - **Less Error-Prone**: Clients can't accidentally use the wrong method
-  - **Better Encapsulation**: Implementation details can change without affecting client code
-  - **Cleaner Client Code**: Focus on what needs to be done, not how it's done
+- **When to add features**:
+  - When there's actual current usage or immediate concrete requirement
+  - When the cost of not having it now is higher than the cost of adding it later
+  - When it's a fundamental architectural decision that can't be easily added later
+- **Benefits of YAGNI**:
+  - Simpler, cleaner APIs that are easier to understand
+  - Less code to maintain and test
+  - Faster development (focus on what's needed)
+  - Easier to change (less coupling, fewer assumptions)
+  - Better discoverability (fewer parameters to understand)
 
 ### Principle: Do Not Create Redundant Parameters or Interfaces
 - **MANDATORY**: Do not add optional parameters, variables, or interface complexity beyond what is actually required for the operation.
@@ -267,6 +260,65 @@ alwaysApply: true
           return self._neo4j_manager
   ```
 - Prefer storing **what the object is about** (ontology instances, schemas, managers) rather than transient inputs used only to build those objects.
+
+### Principle: Intelligent API Design - Auto-Inference Over Manual Parameters
+- **MANDATORY**: For high-level convenience APIs, prefer automatic inference of parameters from context when the information can be reliably determined.
+- **Goal**: Create the cleanest possible API by eliminating obvious or redundant parameters that can be inferred from the input.
+- **When to apply**:
+  - When a parameter can be reliably inferred from the primary input (e.g., query mode from Cypher keywords)
+  - When the inference is deterministic and unambiguous
+  - When explicit control is still available through alternative methods
+- **Example of good practice**:
+  ```python
+  # Clean API - mode automatically inferred from query
+  def run_query(self, cypher_query: str, parameters: Optional[Dict] = None) -> Result:
+      """Execute query with automatically inferred READ/WRITE mode."""
+      mode = self._infer_query_mode(cypher_query)  # Infer from keywords
+      if mode == "WRITE":
+          return self.execute_write(cypher_query, parameters)
+      else:
+          return self.execute_read(cypher_query, parameters)
+
+  # Usage - extremely clean
+  result = manager.run_query("MATCH (n) RETURN count(n)")  # Auto-inferred READ
+  result = manager.run_query("CREATE (n:Asset {name: $name})", {"name": "X"})  # Auto-inferred WRITE
+
+  # Explicit control still available when needed
+  result = manager.execute_write(query, params)  # Force WRITE
+  ```
+- **Example of bad practice** (DO NOT USE):
+  ```python
+  # ❌ Redundant parameter - mode can be inferred
+  def run_query(self, cypher_query: str, mode: str = "READ", parameters: Optional[Dict] = None):
+      if mode == "WRITE":
+          return self.execute_write(cypher_query, parameters)
+      else:
+          return self.execute_read(cypher_query, parameters)
+
+  # Usage - unnecessarily verbose
+  result = manager.run_query("MATCH (n) RETURN n", mode="READ")  # Obvious!
+  result = manager.run_query("CREATE (n)", mode="WRITE", params={"x": 1})  # Obvious!
+  ```
+- **Inference Implementation Best Practices**:
+  - Implement inference as a static method (e.g., `_infer_query_mode()`) for testability
+  - Use robust pattern matching (regex with word boundaries, not simple string matching)
+  - Handle edge cases (comments, multi-line queries, complex statements)
+  - Provide escape hatch: Keep explicit methods available (e.g., `execute_read()`, `execute_write()`)
+- **Layered API Pattern**:
+  - **High-level convenience method**: Auto-infers parameters, uses sensible defaults, cleanest API (e.g., `run_query(query, params)`)
+    - No configuration parameters - uses defaults from config
+    - Maximum simplicity for 99% of use cases
+  - **Mid-level explicit methods**: Explicit control and overrides when needed (e.g., `execute_read(query, params, database)`)
+    - Configuration parameters available for edge cases
+    - Override defaults when necessary (e.g., `database="system"` for admin queries)
+  - **Low-level session/transaction**: Maximum control for advanced use cases (e.g., `session(database, access_mode)`)
+    - Full control over all parameters
+    - For complex transaction patterns
+- Benefits:
+  - **Cleaner code**: Eliminates obvious/redundant parameters
+  - **Better DX**: Developer writes less, code reads better
+  - **Safer**: Hard to accidentally use wrong mode when it's inferred correctly
+  - **Flexible**: Explicit control still available when needed
 
 ## Hierarchical Class Design and Abstraction Levels
 
@@ -587,3 +639,134 @@ _connection_pool = initialize_pool()      # Side effects on import
 - **Clean User Code**: Higher-level classes are thin orchestration layers, resulting in extremely clean and readable user-level code
 - **DRY Compliance**: Error handling, logging, and user-facing output implemented once at the right abstraction level, eliminating repetition
 - **Fast Module Loading**: Lightweight `__init__.py` files ensure quick imports and avoid side effects
+
+---
+
+## One-to-Many Relationship Patterns
+
+### Principle: Consistent Mapping Method Ordering
+- **MANDATORY**: For one-to-many relationship mappings, methods MUST follow a consistent ordering pattern
+- **Standard Order**: `add` → `remove` → `get` → `set` (singular) → `set` (plural) → `from_source_files` → `_parse_from_ttl`
+- **Rationale**: Logical progression from incremental operations (add/remove) to complete operations (get/set), followed by bulk and source file operations
+- **Benefits**: Predictable API, easy to find the right method, consistent across all mapping types
+
+### Principle: Replace-All Pattern for Set Operations
+- **MANDATORY**: `set_*` methods (singular and plural) MUST use a "replace-all" pattern
+- **Pattern**: Delete all existing relationships for the source entity before creating new ones
+- **Rationale**: Ensures no stale data remains, guarantees data consistency
+- **Implementation**: Cypher queries should first `MATCH` and `DELETE` all existing relationships, then `MERGE` new ones
+- **Benefits**: Prevents orphaned relationships, ensures exact match between intended and actual state
+
+### Principle: Unified Source File Processing
+- **MANDATORY**: When a source file contains multiple related entities, use a unified method that processes all entities in one pass
+- **Pattern**: Parse the source file once, extract all related entities, then upsert in correct dependency order
+- **Rationale**: More efficient (single pass), ensures correct dependency order, clearer intent
+- **Example**: A TTL file containing AspectTypes, Aspects, and their mappings should be processed by a single unified method
+- **Benefits**: Single source of truth, reduced parsing overhead, guaranteed consistency
+
+### Principle: Relationship Properties on Relationships
+- **MANDATORY**: When relationships have properties (not just nodes), store properties on the relationship itself
+- **Pattern**: Cypher queries return both node data and relationship properties; Python methods construct mapping dataclasses that include relationship properties
+- **Rationale**: Some relationships have meaningful properties (e.g., `value`, `tags`) that belong to the relationship, not the nodes
+- **Benefits**: Accurate data modeling, enables relationship-specific queries and operations
+
+---
+
+## Query Organization and File Naming
+
+### Principle: Numeric Prefixes for Query Files
+- **MANDATORY**: Use numeric prefixes (0-, 1-, 2-, etc.) to organize query files by domain/object type
+- **Pattern**: Each major object type or domain gets its own numeric prefix range
+- **Rationale**: Clear organization, easy to find related queries, consistent ordering
+- **Benefits**: Better IDE support, easier navigation, clear grouping of related queries
+
+### Principle: Bulk Queries Return Data, Not Counts
+- **MANDATORY**: Bulk upsert queries MUST return the actual upserted data, not just counts
+- **Pattern**: `RETURN n.uri AS uri, n.label AS label` instead of `RETURN count(n) AS created`
+- **Rationale**: Provides useful information to callers, enables proper dataclass instantiation, supports verification
+- **Benefits**: More informative, enables proper return value construction, supports testing and validation
+
+---
+
+## Get-or-Update Pattern
+
+### Principle: Intelligent Operation Detection
+- **MANDATORY**: Methods that can perform multiple operations (GET vs UPDATE) should auto-detect the operation type
+- **Pattern**: Check if all update parameters (`to_*`) are `None`:
+  - If all `None`: Perform GET operation
+  - If any not `None`: Perform UPDATE operation
+- **Rationale**: Single method signature for related operations, reduces API surface area, clearer intent
+- **Benefits**: Simpler API, fewer methods to maintain, intuitive usage
+
+---
+
+## Consistent Derivation Patterns
+
+### Principle: Consistent Namespace Derivation
+- **MANDATORY**: When deriving related values from a primary identifier (e.g., namespace from URI), use a consistent pattern throughout the codebase
+- **Pattern**: Extract the namespace prefix using the same method everywhere (e.g., `uri.split('.')[0]` after normalization)
+- **Rationale**: Reduces errors from inconsistent handling, makes code self-documenting
+- **Benefits**: Predictable behavior, easier to understand, fewer bugs from inconsistent derivation
+
+---
+
+## Progress Tracking and Chunking
+
+### Principle: Use tqdm for Progress Tracking
+- **MANDATORY**: Use `tqdm` for visual progress bars in long-running operations
+- **NEVER** use callback functions for progress tracking
+- **Pattern**: `for start in tqdm(range(...), desc="Processing", unit="chunk"):`
+- **Rationale**: Cleaner API, automatic progress display, no manual callback management
+- **Benefits**: Better user experience, less code, consistent progress display
+
+### Principle: Default Chunk Sizes
+- **MANDATORY**: Use module-level constants for chunk sizes instead of method parameters
+- **Pattern**: `DEFAULT_BULK_CHUNK_SIZE` constant, used directly in methods
+- **Rationale**: KISS/YAGNI - one default size works for all cases, reduces API complexity
+- **Benefits**: Simpler API, consistent behavior, less configuration overhead
+
+---
+
+## Dataclass Patterns
+
+### Principle: Dataclass Creation Timing
+- **MANDATORY**: Create dataclass instances RIGHT BEFORE return statements, AFTER all database/IO operations are complete
+- **Rationale**: Separates "business logic" from "result preparation"
+- **Benefits**: Clear separation of concerns, easier to see what's being persisted vs returned
+
+**WRONG**:
+```python
+def create_item(self, data: dict) -> Item:
+    item = Item(**data)  # ❌ Too early
+    self._save_to_db(data)
+    return item
+```
+
+**CORRECT**:
+```python
+def create_item(self, data: dict) -> Item:
+    self._save_to_db(data)  # Business logic first
+    return Item(**data)  # ✅ Create right before return
+```
+
+### Principle: Type Aliases for Complex Types
+- **MANDATORY**: For complex nested types, declare named type aliases near the top of the module
+- **Pattern**: `UriToPropertiesDict: type = dict[str, dict[str, Any]]`
+- **Rationale**: Self-documenting, DRY, easier to maintain
+- **Benefits**: Clarity, consistency, single source of truth for type definitions
+
+---
+
+## Error Handling Patterns
+
+### Principle: Validation and Error Messages
+- **MANDATORY**: Validate inputs early, use clear error messages
+- **Pattern**: Check inputs at method entry, raise `ValueError` with descriptive messages
+- **Rationale**: Fail fast, clear feedback, easier debugging
+- **Benefits**: Better error messages, earlier failure detection, clearer intent
+
+### Principle: Database Error Handling
+- **MANDATORY**: Let exceptions propagate in most cases, log context for bulk operations
+- **Pattern**: For bulk operations, log which chunk/item failed with context
+- **Rationale**: Don't hide errors, provide useful debugging information
+- **Benefits**: Easier debugging, better error visibility, proper exception handling
