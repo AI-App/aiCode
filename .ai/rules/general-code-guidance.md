@@ -755,6 +755,37 @@ def create_item(self, data: dict) -> Item:
 - **Rationale**: Self-documenting, DRY, easier to maintain
 - **Benefits**: Clarity, consistency, single source of truth for type definitions
 
+### Principle: Use `from __future__ import annotations` for Forward References
+- **MANDATORY**: When using forward references (type hints that reference types defined later or in other modules), use `from __future__ import annotations` at the top of the file to avoid quoting type names
+- **Pattern**: Place `from __future__ import annotations` as the first import (before any other imports)
+- **Rationale**: Makes type hints cleaner and more readable by avoiding quoted strings for forward references
+- **Benefits**: Cleaner code, no need to quote type names, better IDE support
+- **Example of good practice**:
+  ```python
+  from __future__ import annotations
+
+  from dataclasses import dataclass
+  from typing import Optional, TYPE_CHECKING
+
+  if TYPE_CHECKING:
+      from .schema import AssetType, PointRole
+
+  @dataclass
+  class Asset:
+      name: str
+      type: Optional[AssetType] = None  # ✅ No quotes needed
+  ```
+- **Example of bad practice** (DO NOT USE):
+  ```python
+  from dataclasses import dataclass
+  from typing import Optional
+
+  @dataclass
+  class Asset:
+      name: str
+      type: Optional["AssetType"] = None  # ❌ Quotes required without __future__ import
+  ```
+
 ---
 
 ## Error Handling Patterns
