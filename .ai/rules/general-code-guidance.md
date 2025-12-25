@@ -480,6 +480,53 @@ alwaysApply: true
 
 ## Module Organization and `__init__.py` Files
 
+### Principle: Module-Level Code Organization (MANDATORY)
+- **MANDATORY**: All Python modules must follow this exact ordering:
+  1. **Module docstring** (if any)
+  2. **Imports** (standard library → third-party → internal)
+  3. **`__all__`** (if used - explicit public API declaration)
+  4. **Module-level constants** (if any)
+  5. **Class/function definitions**
+- **Rationale**: `__all__` should appear immediately after imports to clearly declare the public API before any implementation code or constants
+- **Benefits**: Clear public API declaration, consistent module structure, easier to understand module exports
+
+**Example of good practice**:
+```python
+"""
+Module docstring describing the module's purpose.
+"""
+
+# 1. Imports
+from dataclasses import dataclass, field
+from typing import Any, Optional
+
+# 2. __all__ (immediately after imports)
+__all__ = [
+    'DEFAULT_SCHEMA_NAMESPACE_LABEL',
+    'SchemaNamespace',
+    'AssetType',
+]
+
+# 3. Module-level constants (after __all__)
+DEFAULT_SCHEMA_NAMESPACE_LABEL: str = "c-som-default"
+
+# 4. Class/function definitions
+@dataclass
+class SchemaNamespace:
+    # ...
+```
+
+**Example of bad practice** (DO NOT USE):
+```python
+# ❌ Constants before __all__
+DEFAULT_SCHEMA_NAMESPACE_LABEL: str = "c-som-default"
+
+__all__ = [
+    'DEFAULT_SCHEMA_NAMESPACE_LABEL',
+    # ...
+]
+```
+
 ### Principle: Keep `__init__.py` Files Light
 - **MANDATORY**: `__init__.py` files should be kept lightweight and serve primarily as import aggregation points.
 - Their main purpose is to expose the public API of a package by importing from lower-level modules.
@@ -522,6 +569,15 @@ alwaysApply: true
 - When the relative path would be unclear or overly complex
 - At the top-level of the package structure (where relative imports don't make sense)
 
+### Principle: Module-Level Code Organization (MANDATORY)
+- **MANDATORY**: Module-level code must follow this exact ordering:
+  1. **Imports** (standard library → third-party → internal)
+  2. **`__all__`** (explicit public API declaration)
+  3. **Module-level constants** (if any)
+  4. **Class/function definitions**
+- **Rationale**: `__all__` should appear immediately after imports to clearly declare the public API before any implementation code
+- **Benefits**: Clear public API declaration, consistent module structure, easier to understand module exports
+
 ### Example of Good Practice
 ```python
 # my_package/__init__.py
@@ -529,14 +585,12 @@ alwaysApply: true
 My Package - Brief description of what this package does.
 """
 
-# Module-level constants
-DEFAULT_TIMEOUT: int = 30
-
-# Import from submodules using RELATIVE imports (within same package)
+# 1. Imports
 from .connection_manager import ConnectionManager, create_connection
 from .queries import execute_query, QueryBuilder
 from .utils import parse_config, validate_input
 
+# 2. __all__ (immediately after imports)
 __all__ = [
     'DEFAULT_TIMEOUT',
     'ConnectionManager',
@@ -546,6 +600,11 @@ __all__ = [
     'parse_config',
     'validate_input',
 ]
+
+# 3. Module-level constants (after __all__)
+DEFAULT_TIMEOUT: int = 30
+
+# 4. Class/function definitions (if any - typically in dedicated modules)
 ```
 
 ### Example of Bad Practice (DO NOT USE)
@@ -657,6 +716,21 @@ _connection_pool = initialize_pool()      # Side effects on import
 - **Implementation**: Cypher queries should first `MATCH` and `DELETE` all existing relationships, then `MERGE` new ones
 - **Benefits**: Prevents orphaned relationships, ensures exact match between intended and actual state
 
+### Principle: When to Use Add vs Set for Incremental Data Processing
+- **MANDATORY**: When processing incremental or incomplete data sources (e.g., CSV files that may not contain all relationships), use `add_*` methods instead of `set_*` methods
+- **Use `add_*` when**:
+  - Data source is incremental (not exhaustive)
+  - Multiple data sources may contribute to the same relationships
+  - Existing relationships should be preserved
+  - Data may be processed in multiple passes
+- **Use `set_*` when**:
+  - Data source is complete and authoritative
+  - You want to replace all existing relationships with the new data
+  - Data represents the complete, final state
+- **Rationale**: `add_*` methods preserve existing relationships, while `set_*` methods replace all relationships (replace-all pattern)
+- **Example**: When processing CSV files that may be incremental updates, use `add_point_roles_to_asset_type()` instead of `set_point_roles_of_asset_type()` to avoid removing relationships not present in the current CSV
+- **Benefits**: Prevents data loss from incremental updates, allows safe processing of partial data sources
+
 ### Principle: Unified Source File Processing
 - **MANDATORY**: When a source file contains multiple related entities, use a unified method that processes all entities in one pass
 - **Pattern**: Parse the source file once, extract all related entities, then upsert in correct dependency order
@@ -685,6 +759,17 @@ _connection_pool = initialize_pool()      # Side effects on import
 - **Pattern**: `RETURN n.uri AS uri, n.label AS label` instead of `RETURN count(n) AS created`
 - **Rationale**: Provides useful information to callers, enables proper dataclass instantiation, supports verification
 - **Benefits**: More informative, enables proper return value construction, supports testing and validation
+
+### Principle: Well-Commented Complex Queries
+- **MANDATORY**: Complex Cypher queries MUST include comprehensive comments explaining:
+  - **Purpose**: What the query does (replace-all pattern, incremental update, etc.)
+  - **Input format**: What parameters are expected and their structure
+  - **CALL subqueries**: Why CALL is used (to avoid row multiplication), what it does
+  - **Relationship properties**: Which properties are stored on relationships vs nodes
+  - **OPTIONAL MATCH**: Why optional matching is used and what it means
+  - **MERGE semantics**: When MERGE creates vs updates, why idempotency matters
+- **Rationale**: Cypher queries can be complex; comments help maintainers understand intent and avoid bugs
+- **Benefits**: Easier maintenance, faster onboarding, fewer bugs from misunderstanding query logic
 
 ---
 
@@ -718,6 +803,17 @@ _connection_pool = initialize_pool()      # Side effects on import
 - **Pattern**: `for start in tqdm(range(...), desc="Processing", unit="chunk"):`
 - **Rationale**: Cleaner API, automatic progress display, no manual callback management
 - **Benefits**: Better user experience, less code, consistent progress display
+- **Client script usage**: Client scripts should also use `tqdm` when they have their own loops (e.g., iterating over grouped data before calling library methods), even though library methods use `tqdm` internally
+- **Example**: When processing grouped data in a client script before calling library methods, wrap the iteration with `tqdm`:
+  ```python
+  for asset_type_uri, point_role_labels in tqdm(
+      asset_type_to_point_role_labels.items(),
+      desc="Adding point roles to asset types",
+      unit="asset type"
+  ):
+      # Map labels to URIs and call library method
+      schema.add_point_roles_to_asset_type(asset_type_uri, point_role_uris)
+  ```
 
 ### Principle: Default Chunk Sizes
 - **MANDATORY**: Use module-level constants for chunk sizes instead of method parameters
@@ -801,3 +897,299 @@ def create_item(self, data: dict) -> Item:
 - **Pattern**: For bulk operations, log which chunk/item failed with context
 - **Rationale**: Don't hide errors, provide useful debugging information
 - **Benefits**: Easier debugging, better error visibility, proper exception handling
+
+---
+
+## Client Code Simplicity and Library Delegation
+
+### Principle: Client Code Should Be Minimal and Situation-Specific
+- **MANDATORY**: Client-level code (scripts, applications, user-facing code) should be as simple as possible and specific to the situation, with minimal general boilerplate.
+- **Complexity belongs in the library**: General complexities, error handling, validation, progress tracking, and database operations should be handled by the library package code as much as possible.
+- **Client code focuses on**: Data extraction, transformation, and high-level orchestration - not implementation details.
+
+**Example of good practice**:
+```python
+#!/usr/bin/env python3
+"""Populate Asset Types from CSV Files"""
+
+import argparse
+import json
+from pathlib import Path
+
+import pandas as pd
+from tqdm import tqdm
+
+from autonomous_building import AutonomousBuilding
+from autonomous_building.util.paths import BUILDINGS_DIR_PATH
+
+# Constants at top
+MAIN_BUILDING_NAME: str = Path(__file__).parents[2].name
+EOM_CSV_FILE_NAME: str = "eom_IE4L_Bangalore_BACS.csv"
+EOM_COLUMN_ASSET_TYPE: str = "asset_type"
+
+# CLI parsing
+parser = argparse.ArgumentParser()
+parser.add_argument("--dev", action="store_true", help="Use dev building database")
+args = parser.parse_args()
+
+BUILDING_NAME = f"{MAIN_BUILDING_NAME}-dev" if args.dev else MAIN_BUILDING_NAME
+data_dir = BUILDINGS_DIR_PATH / MAIN_BUILDING_NAME / "data"
+
+# Load building and extract data
+building = AutonomousBuilding.load(BUILDING_NAME)
+eom_df = pd.read_csv(data_dir / EOM_CSV_FILE_NAME)
+
+# Extract URIs (simple data transformation)
+csv_uris = {uri for value in eom_df[EOM_COLUMN_ASSET_TYPE].dropna().unique()
+            if (uri := parse_asset_type(value)['uri'])}
+
+# Delegate to library - all complexity handled there
+uri_to_properties_dict = {uri: {} for uri in csv_uris}
+building.ontology.physical_ontology.schema.upsert_asset_types(uri_to_properties_dict)
+```
+
+**Example of good practice (with combined mapping and processing)**:
+```python
+# Group data and process in single loop (combines mapping and adding)
+asset_type_to_point_role_labels = eom_df.groupby('asset_type_uri')['point_role_label'].apply(
+    lambda x: set(x.unique())
+).to_dict()
+
+# Map labels to URIs and add to asset types in single loop (efficient)
+schema = building.ontology.physical_ontology.schema
+for asset_type_uri, point_role_labels in tqdm(
+    asset_type_to_point_role_labels.items(),
+    desc="Adding point roles to asset types",
+    unit="asset type"
+):
+    # Map labels to URIs (transformation)
+    point_role_uris = [label_to_uri[label] for label in point_role_labels if label in label_to_uri]
+
+    # Call library method (delegation)
+    if point_role_uris:
+        schema.add_point_roles_to_asset_type(asset_type_uri, point_role_uris)
+```
+
+**Example of bad practice** (DO NOT USE):
+```python
+# ❌ Client code doing too much - database queries, error handling, progress tracking
+building = AutonomousBuilding.load(BUILDING_NAME)
+manager = building.ontology.get_neo4j_connection_manager()
+
+# ❌ Custom database queries instead of using library methods
+result = manager.run_query("MATCH (at:AssetType) RETURN at.uri, at.label")
+existing = {r['uri']: r['label'] for r in result}
+
+# ❌ Manual error handling and progress tracking
+for uri in csv_uris:
+    try:
+        if uri in existing:
+            # Manual update logic
+            manager.run_query("MATCH (at:AssetType {uri: $uri}) SET at.label = $label", ...)
+        else:
+            # Manual create logic
+            manager.run_query("CREATE (at:AssetType {uri: $uri, label: $label})", ...)
+    except Exception as e:
+        print(f"Error: {e}")  # ❌ Error handling in client code
+```
+
+### Benefits of Client Code Simplicity
+- **Readability**: Client code reads like a recipe - clear steps, easy to understand
+- **Maintainability**: Changes to implementation details don't require client code updates
+- **Consistency**: All clients use the same library methods, ensuring consistent behavior
+- **Testability**: Library methods are tested once, not duplicated in each client
+- **Flexibility**: Library can evolve without breaking client code
+
+### What Client Code Should Do
+- ✅ **Extract data** from sources (CSV, JSON, files, APIs)
+- ✅ **Transform data** to library-expected formats (simple transformations)
+- ✅ **Orchestrate** high-level operations (call library methods in sequence)
+- ✅ **Handle CLI arguments** for script-specific configuration
+- ✅ **Define constants** specific to the script's data sources
+- ✅ **Combine mapping and processing in single loops** when iterating over grouped data (e.g., map labels to URIs and call library method in the same loop)
+- ✅ **Use `tqdm` for client-side loops** when iterating over data before calling library methods
+
+### What Client Code Should NOT Do
+- ❌ **Database queries** - use library methods instead
+- ❌ **Error handling** - let library methods handle errors (or propagate)
+- ❌ **Progress tracking** - library methods use `tqdm` internally
+- ❌ **Validation logic** - library methods validate inputs
+- ❌ **Session management** - library handles Neo4j sessions
+- ❌ **Duplicate scripts** - use CLI flags instead (e.g., `--dev`)
+
+### Principle: Avoid Duplicate Scripts - Use CLI Flags Instead
+- **MANDATORY**: When scripts differ only by configuration (e.g., dev vs. production building), use CLI flags rather than duplicating scripts.
+- **Pattern**: Single script with flags (e.g., `--dev`) that modify behavior
+- **Rationale**: DRY principle - one script to maintain, not multiple copies
+- **Benefits**: Easier maintenance, consistent behavior, fewer bugs
+
+**Example**:
+```python
+# ✅ Single script with --dev flag
+parser.add_argument("--dev", action="store_true", help="Use dev building")
+BUILDING_NAME = f"{MAIN_BUILDING_NAME}-dev" if args.dev else MAIN_BUILDING_NAME
+```
+
+**Avoid**:
+```python
+# ❌ Duplicate scripts: 0-populate-asset-types.py and 0-populate-asset-types-dev.py
+# Maintenance burden, risk of divergence
+```
+
+---
+
+## Import Organization and Ordering
+
+### Principle: Standard Import Ordering (MANDATORY)
+- **MANDATORY**: Imports must follow a consistent ordering pattern for readability and maintainability.
+- **Standard Order**:
+  1. **Future imports** (if needed): `from __future__ import annotations`
+  2. **Standard library imports**: `import argparse`, `import json`, `from pathlib import Path`
+  3. **Third-party imports**: `import pandas as pd`, `from tqdm import tqdm`
+  4. **Internal/local imports**: `from autonomous_building import ...`
+  5. **Within each group**: Alphabetical ordering (optional but recommended)
+
+**Example of good practice**:
+```python
+#!/usr/bin/env python3
+"""Example script with proper import ordering"""
+
+# 1. Future imports (if needed)
+from __future__ import annotations
+
+# 2. Standard library imports (alphabetical)
+import argparse
+import json
+from pathlib import Path
+
+# 3. Third-party imports (alphabetical)
+import pandas as pd
+
+# 4. Internal/local imports
+from autonomous_building import AutonomousBuilding
+from autonomous_building.util.paths import BUILDINGS_DIR_PATH
+```
+
+**Example of bad practice** (DO NOT USE):
+```python
+# ❌ Mixed ordering - hard to read and maintain
+from autonomous_building import AutonomousBuilding
+import json
+import pandas as pd
+from pathlib import Path
+import argparse
+```
+
+### Benefits of Standard Import Ordering
+- **Readability**: Easy to scan and find imports
+- **Consistency**: All files follow the same pattern
+- **Tool compatibility**: Works well with auto-formatters (black, isort)
+- **Maintainability**: Clear separation between stdlib, third-party, and internal code
+
+### Import Grouping Rules
+- **Group by source**: Standard library, third-party, internal
+- **Separate groups**: Use blank lines between groups (one blank line is sufficient)
+- **Within groups**: Alphabetical ordering is recommended but not mandatory
+- **Relative vs absolute**: Use absolute imports for cross-package imports, relative imports for same-package modules
+
+---
+
+## Constants Organization in Scripts
+
+### Principle: Constants at Top of File (MANDATORY)
+- **MANDATORY**: All constants (file names, column names, configuration values) should be defined at the top of the file, immediately after imports and CLI argument parsing.
+- **Grouping**: Group related constants together with comments describing their purpose
+- **Naming**: Use descriptive, uppercase names with type annotations
+- **Documentation**: Add comments explaining what data each constant represents
+
+**Example of good practice**:
+```python
+#!/usr/bin/env python3
+"""Populate Asset Types from CSV Files"""
+
+import argparse
+from pathlib import Path
+
+from autonomous_building import AutonomousBuilding
+from autonomous_building.util.paths import BUILDINGS_DIR_PATH
+
+# CLI argument parsing
+parser = argparse.ArgumentParser()
+parser.add_argument("--dev", action="store_true")
+args = parser.parse_args()
+
+# Building configuration
+MAIN_BUILDING_NAME: str = Path(__file__).parents[2].name
+BUILDING_NAME: str = f"{MAIN_BUILDING_NAME}-dev" if args.dev else MAIN_BUILDING_NAME
+data_dir = BUILDINGS_DIR_PATH / MAIN_BUILDING_NAME / "data"
+
+# CSV file names
+EOM_CSV_FILE_NAME: str = "eom_IE4L_Bangalore_BACS.csv"
+IE4L_CSV_FILE_NAME: str = "IE4L-Bangalore-BACS.csv"
+
+# CSV column names
+# EOM CSV: Contains AssetType URIs in dotted-namespace format (e.g., "hcb-hvac.VariableAirVolume")
+#          Typically stored as JSON array strings: '["hcb-hvac.VariableAirVolume"]'
+EOM_COLUMN_ASSET_TYPE: str = "asset_type"
+
+# IE4L CSV: Contains human-readable AssetType labels (e.g., "Chiller", "Variable Air Volume")
+IE4L_COLUMN_ASSET_TYPE: str = "Asset Type"
+```
+
+**Example of bad practice** (DO NOT USE):
+```python
+# ❌ Constants scattered throughout code
+def parse_csv():
+    csv_file = "eom_IE4L_Bangalore_BACS.csv"  # ❌ Hardcoded in function
+    column = "asset_type"  # ❌ Hardcoded in function
+    # ...
+
+# ❌ No type annotations or documentation
+EOM_CSV_FILE_NAME = "eom_IE4L_Bangalore_BACS.csv"  # ❌ No type annotation
+```
+
+### Benefits of Constants at Top
+- **Discoverability**: All configuration visible at a glance
+- **Maintainability**: Single place to update file names, column names, etc.
+- **Documentation**: Comments explain what each constant represents
+- **Type safety**: Type annotations make constants self-documenting
+- **Reusability**: Constants can be referenced throughout the script
+
+### Constants Organization Pattern
+1. **CLI argument parsing** (if applicable)
+2. **Configuration constants** (building names, paths, etc.)
+3. **Data source constants** (file names, column names, etc.)
+4. **Business logic constants** (thresholds, defaults, etc.)
+5. **Each group** with descriptive comments explaining the data they represent
+
+---
+
+## Terminal Command Execution
+
+### Principle: Do Not Suppress Output with `2>&1` (MANDATORY)
+- **MANDATORY**: When running scripts or commands via terminal, **DO NOT** use `2>&1` to redirect stderr to stdout
+- **Rationale**: Users want to see all output (both stdout and stderr) in real-time to monitor progress and debug issues
+- **Pattern**: Run commands without output redirection, allowing both stdout and stderr to display naturally
+
+**Example of good practice**:
+```bash
+# ✅ Correct - output visible to user
+uv run python buildings/devtest/.scripts/populate-physical-ontology-schema-in-neo4j.py
+```
+
+**Example of bad practice** (DO NOT USE):
+```bash
+# ❌ Wrong - suppresses output visibility
+uv run python buildings/devtest/.scripts/populate-physical-ontology-schema-in-neo4j.py 2>&1
+```
+
+**Benefits**:
+- **Real-time visibility**: Users can see progress and errors as they occur
+- **Better debugging**: Error messages are immediately visible
+- **Transparency**: All output is visible, not hidden or redirected
+- **User control**: Users can see what's happening and make informed decisions
+
+**When output redirection might be acceptable**:
+- Only when explicitly requested by the user
+- For logging purposes where output is explicitly saved to a file
+- Never as a default behavior in automated scripts or tool execution
