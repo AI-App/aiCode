@@ -720,30 +720,6 @@ ENV_NAME = f"{MAIN_ENV_NAME}-dev" if args.dev else MAIN_ENV_NAME
 
 ---
 
-## Import Organization and Ordering
-
-### Principle: Standard Import Ordering (MANDATORY)
-- **MANDATORY**: Imports must follow a consistent ordering pattern for readability and maintainability.
-- **Standard Order**:
-  1. **Language-specific future imports** (if needed, e.g., `from __future__ import annotations` in Python)
-  2. **Standard library imports**
-  3. **Third-party imports**
-  4. **Internal/local imports**
-  5. **Within each group**: Alphabetical ordering (optional but recommended)
-
-### Benefits of Standard Import Ordering
-- **Readability**: Easy to scan and find imports
-- **Consistency**: All files follow the same pattern
-- **Tool compatibility**: Works well with auto-formatters
-- **Maintainability**: Clear separation between stdlib, third-party, and internal code
-
-### Import Grouping Rules
-- **Group by source**: Standard library, third-party, internal
-- **Separate groups**: Use blank lines between groups (one blank line is sufficient)
-- **Within groups**: Alphabetical ordering is recommended but not mandatory
-
----
-
 ## Constants Organization in Scripts
 
 ### Principle: Constants at Top of File (MANDATORY)
