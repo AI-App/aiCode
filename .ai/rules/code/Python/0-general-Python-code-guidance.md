@@ -373,7 +373,7 @@ import argparse
 - **Group by source**: Standard library, third-party, internal
 - **Separate groups**: Use blank lines between groups (one blank line is sufficient)
 - **Within groups**: **MANDATORY** - Alphabetical ordering (unless explicitly instructed/overridden otherwise)
-- **Relative vs absolute**: Use absolute imports for cross-package imports, relative imports for same-package modules
+- **Relative vs absolute**: Use absolute imports for cross-package imports, relative imports for same-package modules. **Within internal imports group**: Absolute imports come first, then relative imports (both alphabetically ordered within their respective subgroups)
 - **Organize large import lists**: For large import lists (e.g., many query constants), use comments to group related imports for readability
   - **Pattern**: `# Group name` comment before related imports
   - **When to use**: When importing 10+ items from a single module, especially when they can be logically grouped
