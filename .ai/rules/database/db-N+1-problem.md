@@ -1,17 +1,26 @@
-# N+1 Query Problem: Pre-Fetching Solution Pattern
+# N+1 Query Problem: Detection and Optimization
+
+## ⚠️ CRITICAL: N+1 is a PROBLEM to Detect and Solve ⚠️
+
+**This document describes the N+1 query PROBLEM and how to SOLVE it with optimizations.**
+
+**Agent Task:** When reviewing code, **actively look for N+1 query problems** and fix them using the pre-fetching optimization pattern described below.
+
+---
 
 ## Problem: The N+1 Query Anti-Pattern
 
 **What it is:** Making 1 query to get a list of records, then N individual queries (one per record) to fetch related data.
 
-**Why it's slow:**
+**Why it's a problem:**
 - Database round-trips are expensive (network latency, query parsing, connection overhead)
 - Large numbers of individual queries can take minutes or hours
 - Each query has overhead even if it returns quickly
+- Performance degrades linearly with data size (doesn't scale)
 
 **Example:**
 ```python
-# ❌ BAD: N+1 pattern
+# ❌ BAD: N+1 problem - DO NOT DO THIS
 records = query("SELECT * FROM mappings")  # 1 query
 
 for record in records:  # N records
@@ -27,7 +36,7 @@ for record in records:  # N records
 
 ## Solution: Pre-Fetching / Batch Fetching Pattern
 
-**The pattern:**
+**The optimization pattern:**
 1. **Identify what you need:** Collect all unique IDs/URIs you'll need
 2. **Bulk fetch once:** Make 1-2 queries to fetch ALL related data upfront
 3. **Build lookup caches:** Create dictionaries/hash maps for O(1) lookups
@@ -35,7 +44,7 @@ for record in records:  # N records
 
 **Example:**
 ```python
-# ✅ GOOD: Pre-fetching pattern
+# ✅ GOOD: Pre-fetching optimization - SOLVES the N+1 problem
 records = query("SELECT * FROM mappings")  # 1 query
 
 # Collect unique IDs needed
@@ -57,46 +66,48 @@ for record in records:
     # Total: 1 + 2 = 3 queries (down from 2N + 1!)
 ```
 
-## When to Apply This Pattern
+## When to Detect and Fix This Problem
 
 ### Red Flags (Signs You Have N+1 Problem)
 
 1. **Looping with database calls:**
    ```python
    for item in items:
-       related = get_or_update_related(item.id)  # ❌ Query in loop
+       related = get_or_update_related(item.id)  # ❌ Query in loop - N+1 PROBLEM
    ```
 
 2. **Processing query results with individual lookups:**
    ```python
    results = query("SELECT ...")
    for result in results:
-       obj = get_or_update_object(result.uri)  # ❌ Query per result
+       obj = get_or_update_object(result.uri)  # ❌ Query per result - N+1 PROBLEM
    ```
 
 3. **Reconstructing objects from query results:**
    ```python
    mappings = []
    for record in query_results:
-       obj1 = get_or_update_object(record.obj1_uri)  # ❌ Individual query
-       obj2 = get_or_update_object(record.obj2_uri)  # ❌ Individual query
+       obj1 = get_or_update_object(record.obj1_uri)  # ❌ Individual query - N+1 PROBLEM
+       obj2 = get_or_update_object(record.obj2_uri)  # ❌ Individual query - N+1 PROBLEM
        mappings.append(Mapping(obj1, obj2))
    ```
 
-### When It's Safe to Skip
+### When It's Safe to Skip Optimization
 
 - **Small datasets:** If you're processing < 10 items, the overhead may not matter
 - **One-time operations:** If this code path runs rarely, optimization may not be worth it
 - **Already optimized:** If the `get_or_update_*` method already uses caching internally
 
-## Implementation Steps
+## Implementation Steps: How to Fix N+1 Problems
 
-### Step 1: Identify the Pattern
+### Step 1: Identify the Problem
 
 Look for:
 - Loops that call `get_or_update_*` methods
 - Methods that process query results and fetch related objects
 - Code that reconstructs dataclass instances from query results
+
+**Agent Task:** When reviewing code, actively scan for these patterns.
 
 ### Step 2: Collect Unique Identifiers
 
@@ -128,10 +139,10 @@ object_cache = {obj.id: obj for obj in all_objects}
 
 ```python
 # Replace this:
-obj = get_or_update_object(id)  # ❌ Individual query
+obj = get_or_update_object(id)  # ❌ Individual query - N+1 PROBLEM
 
 # With this:
-obj = object_cache.get(id)  # ✅ O(1) lookup
+obj = object_cache.get(id)  # ✅ O(1) lookup - OPTIMIZED
 if not obj:
     # Handle missing object (skip, log, or raise)
     continue
@@ -139,16 +150,16 @@ if not obj:
 
 ## Real Example: Processing Mappings
 
-### Before (N+1 Pattern)
+### Before (N+1 Problem - DO NOT DO THIS)
 
 ```python
 result_mappings = []
 for parent_id, records in parent_id_to_records.items():
-    # ❌ Individual query for each parent (N queries)
+    # ❌ Individual query for each parent (N queries) - N+1 PROBLEM
     parent = self.get_or_update_parent(parent_id)
 
     for record in records:
-        # ❌ Individual query for each child (M queries)
+        # ❌ Individual query for each child (M queries) - N+1 PROBLEM
         child = self.get_or_update_child(record.child_id)
 
         # Create mapping...
@@ -157,8 +168,9 @@ for parent_id, records in parent_id_to_records.items():
 
 **Total queries:** N + M individual queries
 **Time:** Minutes or hours for large datasets
+**Status:** ❌ N+1 PROBLEM - needs optimization
 
-### After (Pre-Fetching Pattern)
+### After (Pre-Fetching Optimization - SOLVES the Problem)
 
 ```python
 # Step 1: Collect unique IDs needed
@@ -200,6 +212,7 @@ for parent_id, records in parent_id_to_records.items():
 **Total queries:** 2 bulk queries
 **Time:** Seconds
 **Speedup:** 10-100x faster or more
+**Status:** ✅ OPTIMIZED - N+1 problem solved
 
 ## Key Principles
 
@@ -218,25 +231,27 @@ for parent_id, records in parent_id_to_records.items():
 
 ## When Reviewing Code
 
-**Ask yourself:**
-- Are there loops that call database methods?
-- Are we processing query results and fetching related objects?
-- Could we bulk fetch all related data upfront?
-- Would pre-fetching reduce the number of queries significantly?
+**Agent Task: Ask yourself:**
+- Are there loops that call database methods? → **N+1 PROBLEM detected**
+- Are we processing query results and fetching related objects? → **N+1 PROBLEM detected**
+- Could we bulk fetch all related data upfront? → **Apply optimization**
+- Would pre-fetching reduce the number of queries significantly? → **Apply optimization**
 
-**If yes to any:** Apply the pre-fetching pattern!
+**If yes to any:** Apply the pre-fetching optimization pattern to solve the N+1 problem!
 
 ## Success Metrics
 
-**Before optimization:**
+**Before optimization (N+1 Problem):**
 - Queries: N + M individual queries (where N and M can be thousands)
 - Time: Minutes or hours
 - Scalability: Gets worse as data grows
+- Status: ❌ PROBLEM - needs fixing
 
-**After optimization:**
+**After optimization (Problem Solved):**
 - Queries: 2-3 bulk queries
 - Time: Seconds
 - Scalability: Constant time regardless of data size
+- Status: ✅ OPTIMIZED
 
 ## Remember
 
@@ -247,3 +262,8 @@ for parent_id, records in parent_id_to_records.items():
 
 **The key insight:**
 > "Database round-trips are expensive. It's much faster to make 2-3 bulk queries than thousands of individual queries, even if you fetch more data than you strictly need."
+
+**Agent Responsibility:**
+- **Detect** N+1 problems when reviewing code
+- **Fix** them using the pre-fetching optimization pattern
+- **Document** the fix with comments referencing this rule file
