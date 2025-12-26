@@ -330,7 +330,7 @@ def create_item(self, data: dict) -> Item:
   2. **Standard library imports**: `import argparse`, `import json`, `from pathlib import Path`
   3. **Third-party imports**: `import pandas as pd`, `from tqdm import tqdm`
   4. **Internal/local imports**: `from autonomous_building import ...`
-  5. **Within each group**: Alphabetical ordering (optional but recommended)
+  5. **Within each group**: **MANDATORY** - Alphabetical ordering (unless explicitly instructed/overridden otherwise)
 
 **Example of good practice**:
 ```python
@@ -372,7 +372,7 @@ import argparse
 ### Import Grouping Rules
 - **Group by source**: Standard library, third-party, internal
 - **Separate groups**: Use blank lines between groups (one blank line is sufficient)
-- **Within groups**: Alphabetical ordering is recommended but not mandatory
+- **Within groups**: **MANDATORY** - Alphabetical ordering (unless explicitly instructed/overridden otherwise)
 - **Relative vs absolute**: Use absolute imports for cross-package imports, relative imports for same-package modules
 - **Organize large import lists**: For large import lists (e.g., many query constants), use comments to group related imports for readability
   - **Pattern**: `# Group name` comment before related imports
