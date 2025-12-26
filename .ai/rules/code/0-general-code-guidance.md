@@ -144,6 +144,31 @@ alwaysApply: true
   - Will this parameter be used by the caller, or is it just being passed through?
 - **Avoid parameter passing for internal concerns**: If information is only needed for internal implementation details (like display formatting, logging context, etc.), it should be handled internally, not passed as parameters.
 - **Avoid redundant optional parameters**: Do not create optional parameters that duplicate information already available in the class or can be derived from existing context.
+
+### Principle: Remove Redundant Helper Methods and Properties
+- **MANDATORY**: Do not create helper methods or properties that simply wrap direct attribute access or method calls.
+- **Pattern**: Use direct access instead of unnecessary indirection
+- **Rationale**: Reduces code complexity, improves readability, follows KISS principle
+- **When to remove**:
+  - Helper methods that only return `self._attribute`
+  - Properties that duplicate existing attributes
+  - Getter methods that don't add any logic beyond access
+- **Example of good practice**:
+  ```python
+  # ✅ Direct access - simple and clear
+  def run_query(self, query: str) -> Result:
+      return self._graph_db.run_query(query, parameters={})
+  ```
+- **Example of bad practice** (DO NOT USE):
+  ```python
+  # ❌ Redundant helper method - adds no value
+  def _get_graph_db(self) -> GraphDb:
+      return self._graph_db  # Just returns the attribute
+
+  def run_query(self, query: str) -> Result:
+      return self._get_graph_db().run_query(query, parameters={})  # Unnecessary indirection
+  ```
+- **Benefits**: Simpler code, fewer methods to maintain, clearer intent
 - **Example of good practice**:
   ```python
   # Clean - no redundant parameters

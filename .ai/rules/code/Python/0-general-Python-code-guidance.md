@@ -374,6 +374,21 @@ import argparse
 - **Separate groups**: Use blank lines between groups (one blank line is sufficient)
 - **Within groups**: Alphabetical ordering is recommended but not mandatory
 - **Relative vs absolute**: Use absolute imports for cross-package imports, relative imports for same-package modules
+- **Organize large import lists**: For large import lists (e.g., many query constants), use comments to group related imports for readability
+  - **Pattern**: `# Group name` comment before related imports
+  - **When to use**: When importing 10+ items from a single module, especially when they can be logically grouped
+  - **Benefits**: Makes large import lists scannable and maintainable
+  - **Example**:
+    ```python
+    from ._graph_db_queries import (
+        # SchemaNamespace queries
+        UPSERT_SCHEMA_NAMESPACE,
+        GET_SCHEMA_NAMESPACE,
+        # AssetType queries
+        UPSERT_ASSET_TYPE,
+        GET_ASSET_TYPE,
+    )
+    ```
 
 ## Progress Tracking
 
