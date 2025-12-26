@@ -5,6 +5,8 @@ alwaysApply: false
 
 # Python-Specific Code Organization Guidelines
 
+**Note**: This document contains **Python-specific** patterns and guidelines. For **general** coding principles (KISS, YAGNI, method ordering, error handling, client code simplicity, database access patterns, query organization, etc.), see `aiCode/.ai/rules/code/0-general-code-guidance.md`. This document references the general guidance where applicable and adds Python-specific details.
+
 ## Module Organization and `__init__.py` Files
 
 ### Principle: Module-Level Code Organization (MANDATORY)

@@ -446,7 +446,56 @@ alwaysApply: true
 
 ---
 
+## Database Access Patterns
+
+### Principle: Direct Database Access (MANDATORY)
+- **MANDATORY**: Use direct property access for database operations - NO session management, NO local variable assignment
+- **Pattern**: `self._graph_db.run_query(QUERY, parameters=...)` directly - do NOT assign to local variables
+- **NEVER** use `with manager.session()` blocks in domain methods
+- **NEVER** specify `default_access_mode` - let auto-inference handle it
+- **NEVER** assign `manager = self._graph_db` - this is tedious and unnecessary
+- **NEVER** create `_get_graph_db()` helper methods - use `self._graph_db` directly (KISS/YAGNI)
+- **Rationale**: Cleaner code, auto-inferred READ vs WRITE mode, consistent with KISS/YAGNI principles
+- **Benefits**: Less code, easier to test and maintain, no unnecessary indirection
+
+**WRONG**:
+```python
+# ❌ Helper method - unnecessary indirection
+def _get_graph_db(self) -> "GraphDb":
+    if not self._graph_db:
+        raise ValueError("Graph database not set")
+    return self._graph_db
+
+# ❌ Low-level session management
+manager = self._get_graph_db()
+with manager.session(default_access_mode="WRITE") as session:
+    result = session.run(QUERY, parameters)
+    # ...
+
+# ❌ Unnecessary local variable assignment
+manager = self._graph_db
+manager.run_query(QUERY, parameters={'rows': chunk})
+```
+
+**CORRECT**:
+```python
+# ✅ Direct use of self._graph_db
+result = self._graph_db.run_query(QUERY, parameters={'param': value})
+existing = result[0] if result else None
+
+# ✅ Direct use in bulk operations
+self._graph_db.run_query(BULK_UPSERT_QUERY, parameters={'rows': chunk})
+```
+
+---
+
 ## Query Organization and File Naming
+
+### Principle: Separate Query Files (MANDATORY)
+- **MANDATORY**: Store database queries in separate files (e.g., `.cypher`, `.sql`) rather than inline in code
+- **Pattern**: One query per file, organized in a dedicated queries directory
+- **Rationale**: Better IDE support, easier testing, clear organization, reusable queries
+- **Benefits**: Better maintainability, easier to review query logic, supports query versioning
 
 ### Principle: Numeric Prefixes for Query Files
 - **MANDATORY**: Use numeric prefixes (0-, 1-, 2-, etc.) to organize query files by domain/object type
@@ -461,14 +510,15 @@ alwaysApply: true
 - **Benefits**: More informative, enables proper return value construction, supports testing and validation
 
 ### Principle: Well-Commented Complex Queries
-- **MANDATORY**: Complex Cypher queries MUST include comprehensive comments explaining:
+- **MANDATORY**: Complex database queries MUST include comprehensive comments explaining:
   - **Purpose**: What the query does (replace-all pattern, incremental update, etc.)
   - **Input format**: What parameters are expected and their structure
-  - **CALL subqueries**: Why CALL is used (to avoid row multiplication), what it does
+  - **CALL subqueries** (for graph databases): Why CALL is used (to avoid row multiplication), what it does
   - **Relationship properties**: Which properties are stored on relationships vs nodes
   - **OPTIONAL MATCH**: Why optional matching is used and what it means
   - **MERGE semantics**: When MERGE creates vs updates, why idempotency matters
-- **Rationale**: Cypher queries can be complex; comments help maintainers understand intent and avoid bugs
+  - **Complex patterns**: Step-by-step explanations for multi-step queries
+- **Rationale**: Database queries can be complex; comments help maintainers understand intent and avoid bugs
 - **Benefits**: Easier maintenance, faster onboarding, fewer bugs from misunderstanding query logic
 
 ---
