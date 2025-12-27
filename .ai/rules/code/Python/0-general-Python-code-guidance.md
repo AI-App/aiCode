@@ -449,6 +449,60 @@ import argparse
   - **Reusability**: Constants can be referenced elsewhere in the class
   - **Discoverability**: Easy to find and understand all class defaults
 
+## Code Simplification Patterns
+
+### Principle: Prefer `or` Operator for Simple Fallback Patterns (MANDATORY)
+- **MANDATORY**: Use the `or` operator instead of `if ... else` for simple fallback patterns when the falsy value behavior is appropriate.
+- **Pattern**: Replace `value if value else default` with `value or default`
+- **When to use**: When you want to use a default value when the original value is falsy (None, empty string, empty list, empty dict, 0, False, etc.)
+- **When NOT to use**: When you need to distinguish between `None` and other falsy values (e.g., `0` or `False` are valid values that should not be replaced)
+- **Rationale**: More concise, Pythonic, and easier to read
+- **Benefits**: Cleaner code, reduced verbosity, consistent with Python idioms
+
+**Example of good practice**:
+```python
+# ✅ Use 'or' for simple fallback patterns
+filtered_properties = {k: v for k, v in properties.items() if k not in ['uri', 'label']}
+properties_param = filtered_properties or None  # Empty dict becomes None
+
+tags = properties.get('tags')
+tags_param = tags or []  # None or empty list becomes []
+
+value = properties.get('value')
+final_value = value or normalized_uri  # None or empty string becomes normalized_uri
+```
+
+**Example of bad practice** (DO NOT USE):
+```python
+# ❌ Verbose if-else pattern when 'or' is more appropriate
+filtered_properties = {k: v for k, v in properties.items() if k not in ['uri', 'label']}
+properties_param = filtered_properties if filtered_properties else None  # ❌ Too verbose
+
+tags = properties.get('tags')
+tags_param = tags if tags else []  # ❌ Too verbose
+
+value = properties.get('value')
+final_value = value if value is not None else normalized_uri  # ❌ Too verbose (unless you need to preserve empty strings)
+```
+
+**When to keep `if ... else`**:
+```python
+# ✅ Keep if-else when you need to distinguish None from other falsy values
+count = data.get('count')
+# If count could be 0 (which is valid), use explicit None check
+final_count = count if count is not None else default_count  # ✅ Preserves 0 as valid value
+
+# ✅ Keep if-else for complex conditions
+result = value if condition and other_condition else default  # ✅ Complex condition
+```
+
+**Common patterns**:
+- `value or None` - Use None when value is falsy
+- `value or []` - Use empty list when value is falsy (None, empty list, etc.)
+- `value or {}` - Use empty dict when value is falsy
+- `value or default_string` - Use default string when value is falsy (None, empty string, etc.)
+- `value or normalized_uri` - Use normalized URI when value is falsy (common for URI fallbacks)
+
 ## Lightweight Instantiation
 
 ### Principle: Lightweight Instantiation and Lazy Indexing
@@ -461,3 +515,79 @@ import argparse
 - This ensures fast instantiation and avoids side effects during import
 - **Pattern**: For cases involving indexing resources and then using them, use an explicit intermediate helper method like `_get_or_create_<index-or-something-else-specific>()` that handles lazy indexing logic and returns the needed content. This is more disciplined than directly calling `index()` in retrieval methods.
 - **Example**: A resource's `index()` method (which computes intermediate structures) should be called lazily via an intermediate helper method (e.g., `_get_or_create_section_index()`), not directly in retrieval methods or in `__init__`
+
+---
+
+## Code Review Checklist
+
+### Principle: Regular Code Quality Audits (MANDATORY)
+
+- **MANDATORY**: During code reviews, refactoring sessions, or maintenance work, regularly audit code for quality issues.
+- **Review questions to ask**:
+  1. **Unused Code**: Does this module/submodule still have unused imports and unused private methods? Those should be deleted.
+  2. **Database Efficiency**: Are there loops of database operations that indicate potentially inefficient database handling? Those should be optimized away if confirmed to be of the N+1 variant, or at least raised for mutual discussion.
+
+### Unused Code Removal
+
+- **MANDATORY**: Remove unused code to maintain codebase cleanliness and reduce maintenance burden.
+- **What to check for**:
+  - Unused imports (not referenced anywhere in the module)
+  - Unused private methods (methods starting with `_` that are never called)
+  - Unused query files (database query files not loaded or used in code)
+  - Unused constants or type aliases
+- **Rationale**: Unused code increases cognitive load, can mislead developers, adds maintenance overhead, and clutters the codebase.
+- **When to remove**: During code reviews, refactoring sessions, or when explicitly identified.
+
+**Example of good practice**:
+```python
+# ✅ All imports are used
+from dataclasses import dataclass
+from typing import Any, Optional
+
+# ✅ All methods are called somewhere
+def _extract_namespace_from_uri(uri: str) -> str:
+    # ... used in multiple places
+```
+
+**Example of bad practice** (DO NOT USE):
+```python
+# ❌ Unused import
+from typing import Union  # Never used
+
+# ❌ Unused private method
+def _generate_uri_from_label(label: str) -> str:
+    # ... never called anywhere
+    pass
+```
+
+### Database Efficiency in Loops
+
+- **MANDATORY**: Check for loops of database operations that indicate potentially inefficient database handling.
+- **N+1 Query Problem**: Making 1 query to get a list, then N additional queries (one per item) to get related data = N+1 queries total.
+- **What to check for**:
+  - Loops that iterate over database results and make additional database queries for each item
+  - Loops that access relationship properties without pre-loading
+  - Patterns that could be optimized with batch queries or pre-fetching
+- **Action**: Optimize away if confirmed to be of the N+1 variant, or at least raise for mutual discussion.
+- **Solution Pattern**: Pre-fetch all needed data in batch queries, then use in-memory caches for lookups.
+
+**Example of good practice**:
+```python
+# ✅ Pre-fetching pattern - 2 queries total (not N+1)
+aspect_uris = [row['uri'] for row in rows]
+aspect_nodes = Aspect.nodes.filter(uri__in=aspect_uris)  # 1 batch query
+aspect_cache: dict[str, Aspect] = {a.uri: a for a in aspect_nodes}
+
+# Iterate using cache (no additional queries)
+for row in rows:
+    aspect_node = aspect_cache.get(row['uri'])  # O(1) lookup
+    # ... use aspect_node
+```
+
+**Example of bad practice** (DO NOT USE):
+```python
+# ❌ N+1 problem - 1 + N queries
+for row in rows:
+    aspect_node = Aspect.nodes.get(uri=row['uri'])  # N queries in loop!
+    # ... use aspect_node
+```

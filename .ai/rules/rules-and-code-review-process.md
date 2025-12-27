@@ -120,6 +120,10 @@ Additionally, verify adherence to methodology-specific principles:
 - Identify gaps where higher-level principles should apply but aren't mentioned
 - Check for edge cases or special handling that should be documented
 
+### Code Quality Checks
+- **Unused Code**: Check for unused imports, unused private methods, unused query files, and unused constants that should be removed
+- **Database Efficiency**: Check for loops of database operations that indicate potentially inefficient database handling (N+1 query problems) that should be optimized or at least raised for mutual discussion
+
 ## Review Output
 
 When reviewing, identify:
