@@ -503,6 +503,45 @@ result = value if condition and other_condition else default  # ✅ Complex cond
 - `value or default_string` - Use default string when value is falsy (None, empty string, etc.)
 - `value or normalized_uri` - Use normalized URI when value is falsy (common for URI fallbacks)
 
+---
+
+## Output and User Interface Guidelines
+
+### Principle: Avoid Emoji Characters in Output (MANDATORY)
+
+- **MANDATORY**: Do not use emoji characters (✅, ❌, ⚠️, etc.) in print statements, log messages, or any user-facing output.
+- **Rationale**: Emoji characters often cause encoding problems on Windows systems, leading to `UnicodeEncodeError` exceptions when the console encoding (typically `cp1252` on Windows) cannot represent these characters.
+- **Impact**: Scripts and applications may crash with errors like:
+  ```
+  UnicodeEncodeError: 'charmap' codec can't encode character '\u2705' in position 0: character maps to <undefined>
+  ```
+- **Solution**: Use plain text alternatives:
+  - ✅ → "SUCCESS:" or "OK:" or just remove
+  - ❌ → "ERROR:" or "FAILED:"
+  - ⚠️ → "WARNING:" or "WARN:"
+- **When to apply**: All print statements, log messages, error messages, and any text output that may be displayed in a console or terminal.
+- **Benefits**: Cross-platform compatibility, reliable execution on Windows, no encoding errors.
+
+**Example of good practice**:
+```python
+# ✅ Plain text - works on all platforms
+print("Assets upserted successfully.")
+print("WARNING: Some CSV labels not found in database")
+print("ERROR: Found 5 assets with conflicting asset_type values")
+print("SUCCESS: All CSV labels verified in database")
+```
+
+**Example of bad practice** (DO NOT USE):
+```python
+# ❌ Emoji characters - causes encoding errors on Windows
+print("✅ Assets upserted successfully.")
+print("⚠️  WARNING: Some CSV labels not found in database")
+print("❌ ERROR: Found 5 assets with conflicting asset_type values")
+print("✅ SUCCESS: All CSV labels verified in database")
+```
+
+---
+
 ## Lightweight Instantiation
 
 ### Principle: Lightweight Instantiation and Lazy Indexing
