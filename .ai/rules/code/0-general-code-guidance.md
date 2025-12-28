@@ -51,6 +51,75 @@ alwaysApply: true
   - Would require passing many parameters if extracted
 - Prefer extraction to instance/static methods when a helper is reused across multiple methods.
 
+### Principle: Helper Methods After Public API Methods
+- **MANDATORY**: Helper methods that support specific public API methods should be placed immediately after those public methods, not in a separate Utilities section
+- **Pattern**: When a helper method is only used by one or a few closely related public methods, place it directly after those methods
+- **Rationale**: Better readability - the helper is directly related to and used by the public methods, keeping related code together
+- **Benefits**:
+  - **Readability**: Helper logic is immediately visible after the public method that uses it
+  - **Maintainability**: Related code stays together, easier to understand and modify
+  - **Discoverability**: When reading a public method, the helper is right below it
+- **When to apply**: Use this pattern for helpers that are tightly coupled to specific public methods (e.g., `_pre_process_aspects_of_point_roles` used only by `add_aspects_to_point_roles` and `set_aspects_of_point_roles`)
+- **When NOT to apply**: General-purpose utilities used across multiple unrelated methods should still go in the Utilities section
+- **Example**:
+  ```python
+  # ✅ CORRECT - Helper immediately after public methods that use it
+  def add_aspects_to_point_roles(
+      self,
+      point_role_uri_to_aspect_uri_to_properties_dict_dict: dict[PointRoleUri, AspectUriToPropertiesDict]
+  ) -> list[PointRoleAspect]:
+      rows = self._pre_process_aspects_of_point_roles(...)  # Uses helper
+      # ... implementation ...
+      return self._post_process_aspects_of_point_roles(results, "add")  # Uses helper
+  
+  def set_aspects_of_point_roles(
+      self,
+      point_role_uri_to_aspect_uri_to_properties_dict_dict: dict[PointRoleUri, AspectUriToPropertiesDict]
+  ) -> list[PointRoleAspect]:
+      rows = self._pre_process_aspects_of_point_roles(...)  # Uses helper
+      # ... implementation ...
+      return self._post_process_aspects_of_point_roles(results, "set")  # Uses helper
+  
+  # Helper methods placed immediately after the public methods that use them
+  def _pre_process_aspects_of_point_roles(
+      self,
+      point_role_uri_to_aspect_uri_to_properties_dict_dict: dict[PointRoleUri, AspectUriToPropertiesDict]
+  ) -> list[dict[str, Any]]:
+      """Helper to prepare rows for bulk PointRole-to-Aspect mapping operations."""
+      # ... implementation ...
+  
+  def _post_process_aspects_of_point_roles(
+      self,
+      results: list[list[Any]],
+      operation_name: str
+  ) -> list[PointRoleAspect]:
+      """Helper to process query results from PointRole-to-Aspect mapping operations."""
+      # ... implementation ...
+  ```
+- **Anti-pattern** (DO NOT USE):
+  ```python
+  # ❌ WRONG - Helper separated from public methods that use it
+  def add_aspects_to_point_roles(...):
+      rows = self._pre_process_aspects_of_point_roles(...)
+      # ... implementation ...
+  
+  def set_aspects_of_point_roles(...):
+      rows = self._pre_process_aspects_of_point_roles(...)
+      # ... implementation ...
+  
+  # ... many other methods ...
+  
+  # ========================================================================
+  # Utilities (helpers and properties)
+  # ========================================================================
+  
+  def _pre_process_aspects_of_point_roles(...):  # ❌ Too far from where it's used
+      ...
+  
+  def _post_process_aspects_of_point_roles(...):  # ❌ Too far from where it's used
+      ...
+  ```
+
 ### Principle: Lightweight Instantiation and Lazy Indexing
 - **MANDATORY**: Do not perform expensive operations (indexing, file I/O, network calls) in constructors/initializers
 - **Terminology Clarification**:
@@ -613,6 +682,50 @@ def create_item(self, data: dict) -> Item:
 - **MANDATORY**: For complex nested types, declare named type aliases near the top of the module
 - **Rationale**: Self-documenting, DRY, easier to maintain
 - **Benefits**: Clarity, consistency, single source of truth for type definitions
+
+### Principle: Transparent Type-Hinting with Named Types
+- **MANDATORY**: Use named type aliases for all types that represent domain concepts, not just complex nested types
+- **Pattern**: Define type aliases at the top of the module for domain-specific types (e.g., `AssetTypeUri`, `PointRoleUri`, `AssetName`, `PointName`) and use them consistently throughout method signatures
+- **Rationale**: Makes type hints self-documenting and transparent - readers immediately understand what each parameter represents without consulting documentation
+- **Benefits**:
+  - **Clarity**: `def upsert_asset(name: AssetName, asset_type_uri: AssetTypeUri)` is immediately clear
+  - **Transparency**: Type hints reveal domain semantics, not just technical types
+  - **Consistency**: Single source of truth for type definitions across the codebase
+  - **Refactoring safety**: Changing the underlying type (e.g., from `str` to a custom class) only requires updating the alias definition
+- **When to use**: Apply to all domain-specific types, even simple ones like `str` when they represent specific domain concepts (URIs, names, identifiers)
+- **Example**:
+  ```python
+  # At top of module
+  AssetTypeUri = str  # URI for AssetType in dotted-namespace format
+  PointRoleUri = str  # URI for PointRole in dotted-namespace format
+  AssetName = str  # Primary identifier for Asset instances
+  PointName = str  # Primary identifier for Point instances
+  
+  # In method signatures
+  def upsert_asset(
+      self,
+      name: AssetName,  # ✅ Clear: this is an Asset name
+      asset_type_uri: AssetTypeUri  # ✅ Clear: this is an AssetType URI
+  ) -> Asset:
+      ...
+  
+  def add_point_roles_to_point(
+      self,
+      point_name: PointName,  # ✅ Clear: this is a Point name
+      point_role_uris: list[PointRoleUri]  # ✅ Clear: list of PointRole URIs
+  ) -> list[PointRole]:
+      ...
+  ```
+- **Anti-pattern** (DO NOT USE):
+  ```python
+  # ❌ Ambiguous: what does this str represent?
+  def upsert_asset(self, name: str, asset_type_uri: str) -> Asset:
+      ...
+  
+  # ❌ Unclear: is this a URI? a name? what format?
+  def add_point_roles_to_point(self, point_name: str, point_role_uris: list[str]) -> list[PointRole]:
+      ...
+  ```
 
 ---
 
