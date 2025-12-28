@@ -63,7 +63,7 @@ alwaysApply: true
 - **When NOT to apply**: General-purpose utilities used across multiple unrelated methods should still go in the Utilities section
 - **Example**:
   ```python
-  # ✅ CORRECT - Helper immediately after public methods that use it
+  # CORRECT - Helper immediately after public methods that use it
   def add_aspects_to_point_roles(
       self,
       point_role_uri_to_aspect_uri_to_properties_dict_dict: dict[PointRoleUri, AspectUriToPropertiesDict]
@@ -71,7 +71,7 @@ alwaysApply: true
       rows = self._pre_process_aspects_of_point_roles(...)  # Uses helper
       # ... implementation ...
       return self._post_process_aspects_of_point_roles(results, "add")  # Uses helper
-  
+
   def set_aspects_of_point_roles(
       self,
       point_role_uri_to_aspect_uri_to_properties_dict_dict: dict[PointRoleUri, AspectUriToPropertiesDict]
@@ -79,7 +79,7 @@ alwaysApply: true
       rows = self._pre_process_aspects_of_point_roles(...)  # Uses helper
       # ... implementation ...
       return self._post_process_aspects_of_point_roles(results, "set")  # Uses helper
-  
+
   # Helper methods placed immediately after the public methods that use them
   def _pre_process_aspects_of_point_roles(
       self,
@@ -87,7 +87,7 @@ alwaysApply: true
   ) -> list[dict[str, Any]]:
       """Helper to prepare rows for bulk PointRole-to-Aspect mapping operations."""
       # ... implementation ...
-  
+
   def _post_process_aspects_of_point_roles(
       self,
       results: list[list[Any]],
@@ -98,25 +98,25 @@ alwaysApply: true
   ```
 - **Anti-pattern** (DO NOT USE):
   ```python
-  # ❌ WRONG - Helper separated from public methods that use it
+  # WRONG - Helper separated from public methods that use it
   def add_aspects_to_point_roles(...):
       rows = self._pre_process_aspects_of_point_roles(...)
       # ... implementation ...
-  
+
   def set_aspects_of_point_roles(...):
       rows = self._pre_process_aspects_of_point_roles(...)
       # ... implementation ...
-  
+
   # ... many other methods ...
-  
+
   # ========================================================================
   # Utilities (helpers and properties)
   # ========================================================================
-  
-  def _pre_process_aspects_of_point_roles(...):  # ❌ Too far from where it's used
+
+  def _pre_process_aspects_of_point_roles(...):  # Too far from where it's used
       ...
-  
-  def _post_process_aspects_of_point_roles(...):  # ❌ Too far from where it's used
+
+  def _post_process_aspects_of_point_roles(...):  # Too far from where it's used
       ...
   ```
 
@@ -185,9 +185,9 @@ alwaysApply: true
   ```
 - **Example of bad practice** (DO NOT USE):
   ```python
-  # ❌ Premature optimization - database override not used anywhere
+  # WRONG: Premature optimization - database override not used anywhere
   def run_query(self, cypher_query: str, parameters: Optional[Dict] = None,
-                database: Optional[str] = None) -> Result:  # ❌ YAGNI violation
+                database: Optional[str] = None) -> Result:  # YAGNI violation
       """Execute query."""
       mode = self._infer_query_mode(cypher_query)
       db = database or self.config.database  # Added complexity for zero usage
@@ -224,13 +224,13 @@ alwaysApply: true
   - Getter methods that don't add any logic beyond access
 - **Example of good practice**:
   ```python
-  # ✅ Direct access - simple and clear
+  # CORRECT: Direct access - simple and clear
   def run_query(self, query: str) -> Result:
       return self._graph_db.run_query(query, parameters={})
   ```
 - **Example of bad practice** (DO NOT USE):
   ```python
-  # ❌ Redundant helper method - adds no value
+  # WRONG: Redundant helper method - adds no value
   def _get_graph_db(self) -> GraphDb:
       return self._graph_db  # Just returns the attribute
 
@@ -248,21 +248,21 @@ alwaysApply: true
   ```
 - **Example of bad practice** (DO NOT USE):
   ```python
-  # ❌ Redundant parameters - manager is already available internally
+  # WRONG: Redundant parameters - manager is already available internally
   def populate_schema_in_neo4j(self, manager: Neo4jConnectionManager) -> dict:
       # ... implementation ...
 
-  # ❌ Redundant parameter - building name only used for display
+  # WRONG: Redundant parameter - building name only used for display
   def populate_schema_in_neo4j(self, building_name: Optional[str] = None) -> dict:
       if building_name:
           print(f"Building: {building_name}")  # Only for display
       # ... implementation ...
 
-  # ❌ Redundant - both parameters do the same thing (identify asset type)
+  # WRONG: Redundant - both parameters do the same thing (identify asset type)
   def upsert_asset(self, uuid: str, name: str,
                    asset_type_uri: Optional[str] = None,
                    asset_type_name: Optional[str] = None,
-                   asset_type_id: Optional[str] = None) -> dict:  # ❌ Too many ways to specify same thing
+                   asset_type_id: Optional[str] = None) -> dict:  # Too many ways to specify same thing
       # ... implementation ...
   ```
 - **When optional parameters are acceptable**:
@@ -303,12 +303,12 @@ alwaysApply: true
       def __init__(self, cognitive_ontology, physical_ontology, config_dict: dict):
           self.cognitive_ontology = cognitive_ontology
           self.physical_ontology = physical_ontology
-          self._config_data = config_dict  # ❌ hoarded raw config
+          self._config_data = config_dict  # WRONG: hoarded raw config
           self._neo4j_manager: Optional[Neo4jConnectionManager] = None
 
       def get_neo4j_connection_manager(self) -> Neo4jConnectionManager:
           if self._neo4j_manager is None:
-              # ❌ repeatedly dig into raw config stored on self
+              # WRONG: repeatedly dig into raw config stored on self
               cfg = self._config_data["ontology"]["physical"]["neo4j-db"]
               neo4j_config = Neo4jDatabaseConfig(... from cfg ...)
               self._neo4j_manager = Neo4jConnectionManager(neo4j_config)
@@ -343,7 +343,7 @@ alwaysApply: true
   ```
 - **Example of bad practice** (DO NOT USE):
   ```python
-  # ❌ Redundant parameter - mode can be inferred
+  # WRONG: Redundant parameter - mode can be inferred
   def run_query(self, cypher_query: str, mode: str = "READ", parameters: Optional[Dict] = None):
       if mode == "WRITE":
           return self.execute_write(cypher_query, parameters)
@@ -405,9 +405,9 @@ alwaysApply: true
       print("Populate Physical Ontology Schema in Neo4j")
       try:
           manager = self.ontology.get_neo4j_connection_manager()
-          print("✅ Connection manager obtained")
+          print("Connection manager obtained")
       except Exception as e:
-          print(f"❌ Error: {e}")
+          print(f"ERROR: {e}")
           traceback.print_exc()
           raise
       # ... more boilerplate ...
@@ -443,19 +443,19 @@ alwaysApply: true
   def upsert_asset(self, uuid: str, name: str) -> dict:
       try:
           if not uuid:
-              raise ValueError("Asset UUID is required")  # ❌ Validation at wrong level
+              raise ValueError("Asset UUID is required")  # WRONG: Validation at wrong level
           return self.ontology.physical_ontology.upsert_asset(uuid, name)
-      except Exception as e:  # ❌ Error handling repeated
+      except Exception as e:  # WRONG: Error handling repeated
           print(f"Error: {e}")
           raise
 
   # Domain class: Also has error handling (duplication)
   def upsert_asset(self, uuid: str, name: str) -> dict:
       if not uuid:
-          raise ValueError("Asset UUID is required")  # ❌ Duplicated validation
+          raise ValueError("Asset UUID is required")  # WRONG: Duplicated validation
       try:
           # ... implementation ...
-      except Exception as e:  # ❌ Error handling repeated
+      except Exception as e:  # WRONG: Error handling repeated
           print(f"Error: {e}")
           raise
   ```
@@ -477,11 +477,11 @@ alwaysApply: true
   building = AutonomousBuilding.load(building_dir)
   try:
       print("Starting population...")
-      manager = building._get_neo4j_connection_manager()  # ❌ Exposing internals
+      manager = building._get_neo4j_connection_manager()  # WRONG: Exposing internals
       result = building.ontology.physical_ontology.populate_schema_in_neo4j()
-      print("✅ Success")
-  except Exception as e:  # ❌ Error handling at user level
-      print(f"❌ Error: {e}")
+      print("SUCCESS")
+  except Exception as e:  # WRONG: Error handling at user level
+      print(f"ERROR: {e}")
       traceback.print_exc()
   ```
 
@@ -554,30 +554,30 @@ alwaysApply: true
 
 **WRONG**:
 ```python
-# ❌ Helper method - unnecessary indirection
+# WRONG: Helper method - unnecessary indirection
 def _get_graph_db(self) -> "GraphDb":
     if not self._graph_db:
         raise ValueError("Graph database not set")
     return self._graph_db
 
-# ❌ Low-level session management
+# WRONG: Low-level session management
 manager = self._get_graph_db()
 with manager.session(default_access_mode="WRITE") as session:
     result = session.run(QUERY, parameters)
     # ...
 
-# ❌ Unnecessary local variable assignment
+# WRONG: Unnecessary local variable assignment
 manager = self._graph_db
 manager.run_query(QUERY, parameters={'rows': chunk})
 ```
 
 **CORRECT**:
 ```python
-# ✅ Direct use of self._graph_db
+# CORRECT: Direct use of self._graph_db
 result = self._graph_db.run_query(QUERY, parameters={'param': value})
 existing = result[0] if result else None
 
-# ✅ Direct use in bulk operations
+# CORRECT: Direct use in bulk operations
 self._graph_db.run_query(BULK_UPSERT_QUERY, parameters={'rows': chunk})
 ```
 
@@ -666,7 +666,7 @@ self._graph_db.run_query(BULK_UPSERT_QUERY, parameters={'rows': chunk})
 **WRONG**:
 ```python
 def create_item(self, data: dict) -> Item:
-    item = Item(**data)  # ❌ Too early
+    item = Item(**data)  # WRONG: Too early
     self._save_to_db(data)
     return item
 ```
@@ -675,7 +675,7 @@ def create_item(self, data: dict) -> Item:
 ```python
 def create_item(self, data: dict) -> Item:
     self._save_to_db(data)  # Business logic first
-    return Item(**data)  # ✅ Create right before return
+    return Item(**data)  # CORRECT: Create right before return
 ```
 
 ### Principle: Type Aliases for Complex Types
@@ -700,29 +700,29 @@ def create_item(self, data: dict) -> Item:
   PointRoleUri = str  # URI for PointRole in dotted-namespace format
   AssetName = str  # Primary identifier for Asset instances
   PointName = str  # Primary identifier for Point instances
-  
+
   # In method signatures
   def upsert_asset(
       self,
-      name: AssetName,  # ✅ Clear: this is an Asset name
-      asset_type_uri: AssetTypeUri  # ✅ Clear: this is an AssetType URI
+      name: AssetName,  # Clear: this is an Asset name
+      asset_type_uri: AssetTypeUri  # Clear: this is an AssetType URI
   ) -> Asset:
       ...
-  
+
   def add_point_roles_to_point(
       self,
-      point_name: PointName,  # ✅ Clear: this is a Point name
-      point_role_uris: list[PointRoleUri]  # ✅ Clear: list of PointRole URIs
+      point_name: PointName,  # Clear: this is a Point name
+      point_role_uris: list[PointRoleUri]  # Clear: list of PointRole URIs
   ) -> list[PointRole]:
       ...
   ```
 - **Anti-pattern** (DO NOT USE):
   ```python
-  # ❌ Ambiguous: what does this str represent?
+  # WRONG: Ambiguous: what does this str represent?
   def upsert_asset(self, name: str, asset_type_uri: str) -> Asset:
       ...
-  
-  # ❌ Unclear: is this a URI? a name? what format?
+
+  # WRONG: Unclear: is this a URI? a name? what format?
   def add_point_roles_to_point(self, point_name: str, point_role_uris: list[str]) -> list[PointRole]:
       ...
   ```
@@ -792,15 +792,15 @@ processor.upsert_types(id_to_properties_dict)
 
 **Example of bad practice** (DO NOT USE):
 ```python
-# ❌ Client code doing too much - database queries, error handling, progress tracking
+# WRONG: Client code doing too much - database queries, error handling, progress tracking
 processor = DataProcessor.load(PROJECT_NAME)
 db = processor.get_database_connection()
 
-# ❌ Custom database queries instead of using library methods
+# WRONG: Custom database queries instead of using library methods
 result = db.query("SELECT * FROM types")
 existing = {r['id']: r['name'] for r in result}
 
-# ❌ Manual error handling and progress tracking
+# WRONG: Manual error handling and progress tracking
 for id in ids:
     try:
         if id in existing:
@@ -810,7 +810,7 @@ for id in ids:
             # Manual create logic
             db.query("INSERT INTO types (id, name) VALUES ($id, $name)", ...)
     except Exception as e:
-        print(f"Error: {e}")  # ❌ Error handling in client code
+        print(f"Error: {e}")  # WRONG: Error handling in client code
 ```
 
 ### Benefits of Client Code Simplicity
@@ -821,21 +821,21 @@ for id in ids:
 - **Flexibility**: Library can evolve without breaking client code
 
 ### What Client Code Should Do
-- ✅ **Extract data** from sources (CSV, JSON, files, APIs)
-- ✅ **Transform data** to library-expected formats (simple transformations)
-- ✅ **Orchestrate** high-level operations (call library methods in sequence)
-- ✅ **Handle CLI arguments** for script-specific configuration
-- ✅ **Define constants** specific to the script's data sources
-- ✅ **Combine mapping and processing in single loops** when iterating over grouped data (e.g., map labels to URIs and call library method in the same loop)
-- ✅ **Use progress tracking for client-side loops** when iterating over data before calling library methods
+- **Extract data** from sources (CSV, JSON, files, APIs)
+- **Transform data** to library-expected formats (simple transformations)
+- **Orchestrate** high-level operations (call library methods in sequence)
+- **Handle CLI arguments** for script-specific configuration
+- **Define constants** specific to the script's data sources
+- **Combine mapping and processing in single loops** when iterating over grouped data (e.g., map labels to URIs and call library method in the same loop)
+- **Use progress tracking for client-side loops** when iterating over data before calling library methods
 
 ### What Client Code Should NOT Do
-- ❌ **Database queries** - use library methods instead
-- ❌ **Error handling** - let library methods handle errors (or propagate)
-- ❌ **Progress tracking** - library methods handle progress tracking internally
-- ❌ **Validation logic** - library methods validate inputs
-- ❌ **Session management** - library handles Neo4j sessions
-- ❌ **Duplicate scripts** - use CLI flags instead (e.g., `--dev`)
+- **Database queries** - use library methods instead
+- **Error handling** - let library methods handle errors (or propagate)
+- **Progress tracking** - library methods handle progress tracking internally
+- **Validation logic** - library methods validate inputs
+- **Session management** - library handles Neo4j sessions
+- **Duplicate scripts** - use CLI flags instead (e.g., `--dev`)
 
 ### Principle: Avoid Duplicate Scripts - Use CLI Flags Instead
 - **MANDATORY**: When scripts differ only by configuration (e.g., dev vs. production building), use CLI flags rather than duplicating scripts.
@@ -845,14 +845,14 @@ for id in ids:
 
 **Example**:
 ```python
-# ✅ Single script with --dev flag
+# CORRECT: Single script with --dev flag
 parser.add_argument("--dev", action="store_true", help="Use dev environment")
 ENV_NAME = f"{MAIN_ENV_NAME}-dev" if args.dev else MAIN_ENV_NAME
 ```
 
 **Avoid**:
 ```python
-# ❌ Duplicate scripts: populate-types.py and populate-types-dev.py
+# WRONG: Duplicate scripts: populate-types.py and populate-types-dev.py
 # Maintenance burden, risk of divergence
 ```
 
@@ -900,14 +900,14 @@ SECONDARY_COLUMN_TYPE: str = "Type"
 
 **Example of bad practice** (DO NOT USE):
 ```python
-# ❌ Constants scattered throughout code
+# WRONG: Constants scattered throughout code
 def parse_csv():
-    csv_file = "data.csv"  # ❌ Hardcoded in function
-    column = "type"  # ❌ Hardcoded in function
+    csv_file = "data.csv"  # WRONG: Hardcoded in function
+    column = "type"  # WRONG: Hardcoded in function
     # ...
 
-# ❌ No type annotations or documentation
-CSV_FILE_NAME = "data.csv"  # ❌ No type annotation
+# WRONG: No type annotations or documentation
+CSV_FILE_NAME = "data.csv"  # WRONG: No type annotation
 ```
 
 ### Benefits of Constants at Top
@@ -935,13 +935,13 @@ CSV_FILE_NAME = "data.csv"  # ❌ No type annotation
 
 **Example of good practice**:
 ```bash
-# ✅ Correct - output visible to user
+# CORRECT: Output visible to user
 run-script populate-schema
 ```
 
 **Example of bad practice** (DO NOT USE):
 ```bash
-# ❌ Wrong - suppresses output visibility
+# WRONG: Suppresses output visibility
 run-script populate-schema 2>&1
 ```
 

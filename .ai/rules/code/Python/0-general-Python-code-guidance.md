@@ -47,7 +47,7 @@ class SchemaNamespace:
 
 **Example of bad practice** (DO NOT USE):
 ```python
-# ❌ Constants before __all__
+# WRONG: Constants before __all__
 DEFAULT_SCHEMA_NAMESPACE_LABEL: str = "c-som-default"
 
 __all__ = [
@@ -132,7 +132,7 @@ DEFAULT_TIMEOUT: int = 30
 # my_package/__init__.py - AVOID THIS
 """My Package"""
 
-# ❌ WRONG: Using absolute imports for sibling modules
+# WRONG: Using absolute imports for sibling modules
 from my_package.connection_manager import ConnectionManager, create_connection
 from my_package.queries import execute_query, QueryBuilder
 from my_package.utils import parse_config, validate_input
@@ -161,7 +161,7 @@ __all__ = [
 # autonomous_building/costar_agent_system/agents/curation/__init__.py
 """Curation agents for data and knowledge management."""
 
-# ❌ AVOID: Unnecessarily long absolute imports for sibling modules
+# WRONG: AVOID - Unnecessarily long absolute imports for sibling modules
 from autonomous_building.costar_agent_system.agents.curation.physical_ontology_agent import PhysicalOntologyAgent
 from autonomous_building.costar_agent_system.agents.curation.logical_ontology_agent import LogicalOntologyAgent
 
@@ -180,7 +180,7 @@ from typing import Optional, Dict, Any
 import os
 import sys
 
-# ❌ Class definition in __init__.py (should be in dedicated module)
+# WRONG: Class definition in __init__.py (should be in dedicated module)
 class ConnectionManager:
     def __init__(self, config: Dict[str, Any]):
         self.config = config
@@ -192,12 +192,12 @@ class ConnectionManager:
 
     # ... more methods ...
 
-# ❌ Function definitions in __init__.py (should be in dedicated module)
+# WRONG: Function definitions in __init__.py (should be in dedicated module)
 def execute_query(query: str, params: Optional[Dict] = None):
     # 50+ lines of implementation
     pass
 
-# ❌ Heavy initialization logic
+# WRONG: Heavy initialization logic
 _global_config = load_config_from_file()  # Slows down import
 _connection_pool = initialize_pool()      # Side effects on import
 ```
@@ -280,7 +280,7 @@ _connection_pool = initialize_pool()      # Side effects on import
   @dataclass
   class Asset:
       name: str
-      type: Optional[AssetType] = None  # ✅ No quotes needed
+      type: Optional[AssetType] = None  # CORRECT: No quotes needed
   ```
 - **Example of bad practice** (DO NOT USE):
   ```python
@@ -290,8 +290,34 @@ _connection_pool = initialize_pool()      # Side effects on import
   @dataclass
   class Asset:
       name: str
-      type: Optional["AssetType"] = None  # ❌ Quotes required without __future__ import
+      type: Optional["AssetType"] = None  # WRONG: Quotes required without __future__ import
   ```
+
+### Principle: Use Lowercase Built-in Generics for Type Hints
+- **MANDATORY**: Use lowercase built-in generic types (`list`, `dict`, `set`, `tuple`) instead of uppercase `typing` module types (`List`, `Dict`, `Set`, `Tuple`)
+- **Pattern**: Use `list[str]`, `dict[str, int]`, `set[str]`, `tuple[str, int]` instead of `List[str]`, `Dict[str, int]`, `Set[str]`, `Tuple[str, int]`
+- **Rationale**: Python 3.9+ supports lowercase generics directly; they're cleaner and don't require imports from `typing`
+- **Benefits**: Cleaner code, fewer imports, better readability, aligns with modern Python style
+- **Example of good practice**:
+  ```python
+  from typing import Any, Optional  # Only import what's needed from typing
+
+  def process_items(items: list[str]) -> dict[str, int]:
+      counts: dict[str, int] = {}
+      seen: set[str] = set()
+      pairs: list[tuple[str, str]] = []
+      # ...
+  ```
+- **Example of bad practice** (DO NOT USE):
+  ```python
+  from typing import List, Dict, Set, Tuple, Any  # WRONG: Unnecessary uppercase imports
+
+  def process_items(items: List[str]) -> Dict[str, int]:  # WRONG: Use lowercase
+      counts: Dict[str, int] = {}  # WRONG: Use lowercase
+      seen: Set[str] = set()  # WRONG: Use lowercase
+      pairs: List[Tuple[str, str]] = []  # WRONG: Use lowercase
+  ```
+- **Note**: This applies to Python 3.9+. For older Python versions, uppercase `typing` module types may be required.
 
 ### Principle: Type Aliases for Complex Types
 - **MANDATORY**: For complex nested types, declare named type aliases near the top of the module
@@ -309,7 +335,7 @@ _connection_pool = initialize_pool()      # Side effects on import
 **WRONG**:
 ```python
 def create_item(self, data: dict) -> Item:
-    item = Item(**data)  # ❌ Too early
+    item = Item(**data)  # WRONG: Too early
     self._save_to_db(data)
     return item
 ```
@@ -318,7 +344,7 @@ def create_item(self, data: dict) -> Item:
 ```python
 def create_item(self, data: dict) -> Item:
     self._save_to_db(data)  # Business logic first
-    return Item(**data)  # ✅ Create right before return
+    return Item(**data)  # CORRECT: Create right before return
 ```
 
 ## Import Organization
@@ -355,7 +381,7 @@ from autonomous_building.util.paths import BUILDINGS_DIR_PATH
 
 **Example of bad practice** (DO NOT USE):
 ```python
-# ❌ Mixed ordering - hard to read and maintain
+# WRONG: Mixed ordering - hard to read and maintain
 from autonomous_building import AutonomousBuilding
 import json
 import pandas as pd
@@ -438,10 +464,10 @@ import argparse
   ```python
   class MyResource:
       def __init__(self,
-                   resource_type: str = 'my-resource-type',  # ❌ Hardcoded default
-                   resource_id: str = 'my-resource-id',      # ❌ Hardcoded default
+                   resource_type: str = 'my-resource-type',  # WRONG: Hardcoded default
+                   resource_id: str = 'my-resource-id',      # WRONG: Hardcoded default
                    **kwargs):
-          default_pdf = Path(__file__).parent / "file.pdf"  # ❌ Hardcoded in method
+          default_pdf = Path(__file__).parent / "file.pdf"  # WRONG: Hardcoded in method
   ```
 - Benefits:
   - **Clarity**: Defaults are visible at class level, not buried in method signatures
@@ -461,7 +487,7 @@ import argparse
 
 **Example of good practice**:
 ```python
-# ✅ Use 'or' for simple fallback patterns
+# CORRECT: Use 'or' for simple fallback patterns
 filtered_properties = {k: v for k, v in properties.items() if k not in ['uri', 'label']}
 properties_param = filtered_properties or None  # Empty dict becomes None
 
@@ -474,26 +500,26 @@ final_value = value or normalized_uri  # None or empty string becomes normalized
 
 **Example of bad practice** (DO NOT USE):
 ```python
-# ❌ Verbose if-else pattern when 'or' is more appropriate
+# WRONG: Verbose if-else pattern when 'or' is more appropriate
 filtered_properties = {k: v for k, v in properties.items() if k not in ['uri', 'label']}
-properties_param = filtered_properties if filtered_properties else None  # ❌ Too verbose
+properties_param = filtered_properties if filtered_properties else None  # WRONG: Too verbose
 
 tags = properties.get('tags')
-tags_param = tags if tags else []  # ❌ Too verbose
+tags_param = tags if tags else []  # WRONG: Too verbose
 
 value = properties.get('value')
-final_value = value if value is not None else normalized_uri  # ❌ Too verbose (unless you need to preserve empty strings)
+final_value = value if value is not None else normalized_uri  # WRONG: Too verbose (unless you need to preserve empty strings)
 ```
 
 **When to keep `if ... else`**:
 ```python
-# ✅ Keep if-else when you need to distinguish None from other falsy values
+# CORRECT: Keep if-else when you need to distinguish None from other falsy values
 count = data.get('count')
 # If count could be 0 (which is valid), use explicit None check
-final_count = count if count is not None else default_count  # ✅ Preserves 0 as valid value
+final_count = count if count is not None else default_count  # CORRECT: Preserves 0 as valid value
 
-# ✅ Keep if-else for complex conditions
-result = value if condition and other_condition else default  # ✅ Complex condition
+# CORRECT: Keep if-else for complex conditions
+result = value if condition and other_condition else default  # CORRECT: Complex condition
 ```
 
 **Common patterns**:
@@ -509,22 +535,22 @@ result = value if condition and other_condition else default  # ✅ Complex cond
 
 ### Principle: Avoid Emoji Characters in Output (MANDATORY)
 
-- **MANDATORY**: Do not use emoji characters (✅, ❌, ⚠️, etc.) in print statements, log messages, or any user-facing output.
+- **MANDATORY**: Do not use emoji characters (checkmarks, X marks, warning symbols, etc.) in print statements, log messages, or any user-facing output.
 - **Rationale**: Emoji characters often cause encoding problems on Windows systems, leading to `UnicodeEncodeError` exceptions when the console encoding (typically `cp1252` on Windows) cannot represent these characters.
 - **Impact**: Scripts and applications may crash with errors like:
   ```
   UnicodeEncodeError: 'charmap' codec can't encode character '\u2705' in position 0: character maps to <undefined>
   ```
 - **Solution**: Use plain text alternatives:
-  - ✅ → "SUCCESS:" or "OK:" or just remove
-  - ❌ → "ERROR:" or "FAILED:"
-  - ⚠️ → "WARNING:" or "WARN:"
+  - "SUCCESS:" or "OK:" or just remove
+  - "ERROR:" or "FAILED:"
+  - "WARNING:" or "WARN:"
 - **When to apply**: All print statements, log messages, error messages, and any text output that may be displayed in a console or terminal.
 - **Benefits**: Cross-platform compatibility, reliable execution on Windows, no encoding errors.
 
 **Example of good practice**:
 ```python
-# ✅ Plain text - works on all platforms
+# CORRECT: Plain text - works on all platforms
 print("Assets upserted successfully.")
 print("WARNING: Some CSV labels not found in database")
 print("ERROR: Found 5 assets with conflicting asset_type values")
@@ -533,11 +559,11 @@ print("SUCCESS: All CSV labels verified in database")
 
 **Example of bad practice** (DO NOT USE):
 ```python
-# ❌ Emoji characters - causes encoding errors on Windows
-print("✅ Assets upserted successfully.")
-print("⚠️  WARNING: Some CSV labels not found in database")
-print("❌ ERROR: Found 5 assets with conflicting asset_type values")
-print("✅ SUCCESS: All CSV labels verified in database")
+# WRONG: Emoji characters - causes encoding errors on Windows
+print("Assets upserted successfully.")  # Emoji removed for cross-platform compatibility
+print("WARNING: Some CSV labels not found in database")  # Emoji removed
+print("ERROR: Found 5 assets with conflicting asset_type values")  # Emoji removed
+print("SUCCESS: All CSV labels verified in database")  # Emoji removed
 ```
 
 ---
@@ -579,21 +605,21 @@ print("✅ SUCCESS: All CSV labels verified in database")
 
 **Example of good practice**:
 ```python
-# ✅ All imports are used
+# CORRECT: All imports are used
 from dataclasses import dataclass
 from typing import Any, Optional
 
-# ✅ All methods are called somewhere
+# CORRECT: All methods are called somewhere
 def _extract_namespace_from_uri(uri: str) -> str:
     # ... used in multiple places
 ```
 
 **Example of bad practice** (DO NOT USE):
 ```python
-# ❌ Unused import
+# WRONG: Unused import
 from typing import Union  # Never used
 
-# ❌ Unused private method
+# WRONG: Unused private method
 def _generate_uri_from_label(label: str) -> str:
     # ... never called anywhere
     pass
@@ -612,7 +638,7 @@ def _generate_uri_from_label(label: str) -> str:
 
 **Example of good practice**:
 ```python
-# ✅ Pre-fetching pattern - 2 queries total (not N+1)
+# CORRECT: Pre-fetching pattern - 2 queries total (not N+1)
 aspect_uris = [row['uri'] for row in rows]
 aspect_nodes = Aspect.nodes.filter(uri__in=aspect_uris)  # 1 batch query
 aspect_cache: dict[str, Aspect] = {a.uri: a for a in aspect_nodes}
@@ -625,7 +651,7 @@ for row in rows:
 
 **Example of bad practice** (DO NOT USE):
 ```python
-# ❌ N+1 problem - 1 + N queries
+# WRONG: N+1 problem - 1 + N queries
 for row in rows:
     aspect_node = Aspect.nodes.get(uri=row['uri'])  # N queries in loop!
     # ... use aspect_node
