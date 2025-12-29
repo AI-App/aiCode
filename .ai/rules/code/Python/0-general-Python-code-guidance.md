@@ -566,6 +566,22 @@ print("ERROR: Found 5 assets with conflicting asset_type values")  # Emoji remov
 print("SUCCESS: All CSV labels verified in database")  # Emoji removed
 ```
 
+### Windows UTF-8 Encoding Requirement
+
+- **When scripts use emoji characters**: Some scripts in the codebase may use emoji characters in their output (e.g., 📊, ✅, 🔍, 🚀). These scripts require UTF-8 encoding to run correctly on Windows.
+- **Windows users**: When running scripts that use emoji characters, set the `PYTHONIOENCODING` environment variable to `utf-8` before execution.
+- **PowerShell example**:
+  ```powershell
+  $env:PYTHONIOENCODING='utf-8'
+  uv run python buildings/.../script.py
+  ```
+- **Command line example** (single command):
+  ```powershell
+  $env:PYTHONIOENCODING='utf-8'; uv run python buildings/.../script.py
+  ```
+- **Note**: This is a Windows-specific workaround. On Linux/macOS, UTF-8 encoding is typically the default and no special configuration is needed.
+- **Preferred approach**: Avoid emoji characters in new code to ensure cross-platform compatibility without requiring environment variable configuration.
+
 ---
 
 ## Lightweight Instantiation
