@@ -97,6 +97,7 @@ __all__ = [
 - When importing from unrelated modules in the codebase
 - When the relative path would be unclear or overly complex
 - At the top-level of the package structure (where relative imports don't make sense)
+- **MANDATORY**: When relative imports require 3 or more dots (e.g., `from ...module` or `from ....module`) - these are error-prone and should be converted to absolute imports for robustness
 
 ### Example of Good Practice
 ```python
