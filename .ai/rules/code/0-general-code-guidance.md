@@ -581,6 +581,33 @@ existing = result[0] if result else None
 self._graph_db.run_query(BULK_UPSERT_QUERY, parameters={'rows': chunk})
 ```
 
+### Principle: Database Indexes Are Critical for Performance (MANDATORY)
+- **MANDATORY**: Database indexes are **critical for query performance**, especially for large datasets
+- **Performance impact**: Missing indexes cause **significant slowdowns** and can lead to timeouts on bulk operations
+- **Real-world evidence**: Databases without proper indexes experience degraded performance (queries that should take seconds can take minutes or hours)
+- **When indexes are needed**: Indexes are required for:
+  - Properties used in lookup operations (WHERE clauses, JOIN conditions)
+  - Properties used in filter operations (IN clauses, range queries)
+  - Primary keys and unique identifiers
+  - Foreign keys and relationship traversal
+- **Index maintenance**: Indexes must be created/updated when:
+  - Schema changes (new properties added to entities)
+  - New databases are set up
+  - Entity definitions are modified
+  - Performance issues indicate missing indexes
+- **Best practices**:
+  - Index all properties used in queries (lookups, filters, joins)
+  - Use unique indexes for primary keys
+  - Use regular indexes for frequently-queried properties that may have duplicates
+  - Don't index rarely-queried properties (saves storage and write performance)
+  - Document indexing decisions in code comments
+- **Performance benefits**:
+  - Fast lookup operations (O(log n) instead of O(n))
+  - Efficient bulk operations on large datasets
+  - Better query planning by database engine
+  - Prevents timeouts on complex queries
+- **Note**: Specific indexing mechanisms vary by database system (e.g., NeoModel for Neo4j, CREATE INDEX for SQL databases). See project-specific rules for implementation details.
+
 ---
 
 ## Query Organization and File Naming
