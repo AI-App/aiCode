@@ -267,7 +267,9 @@ _connection_pool = initialize_pool()      # Side effects on import
 - **MANDATORY**: When using forward references (type hints that reference types defined later or in other modules), use `from __future__ import annotations` at the top of the file to avoid quoting type names
 - **Pattern**: Place `from __future__ import annotations` as the first import (before any other imports)
 - **Rationale**: Makes type hints cleaner and more readable by avoiding quoted strings for forward references
-- **Benefits**: Cleaner code, no need to quote type names, better IDE support
+- **Important**: With `from __future__ import annotations`, type annotations are evaluated lazily (as strings), so forward references do NOT cause undefined name errors at runtime. Type aliases and classes can be referenced in type annotations before they are defined in the file.
+- **Note on Linters**: Some linters (e.g., pylint, pyright) may still show "undefined name" warnings for forward references, but these are false positives. The code is correct and will run without errors. The linter warnings can be safely ignored when `from __future__ import annotations` is present.
+- **Benefits**: Cleaner code, no need to quote type names, better IDE support, forward references work without errors
 - **Example of good practice**:
   ```python
   from __future__ import annotations
@@ -281,7 +283,20 @@ _connection_pool = initialize_pool()      # Side effects on import
   @dataclass
   class Asset:
       name: str
-      type: Optional[AssetType] = None  # CORRECT: No quotes needed
+      type: Optional[AssetType] = None  # CORRECT: No quotes needed, even if AssetType defined later
+  ```
+- **Example of forward references working**:
+  ```python
+  from __future__ import annotations
+
+  # Type alias used before it's defined - OK with __future__ import
+  class SerializedPointRoleAspect(TypedDict):
+      point_role_uri: PointRoleURI  # Forward reference - no error
+      aspect_uri: AspectURI  # Forward reference - no error
+
+  # Type aliases defined later in the file
+  PointRoleURI: type = str
+  AspectURI: type = str  # Can be defined after use - no undefined error
   ```
 - **Example of bad practice** (DO NOT USE):
   ```python
