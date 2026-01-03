@@ -452,6 +452,19 @@ import argparse
       schema.add_point_roles_to_asset_type(asset_type_uri, point_role_uris)
   ```
 
+### Principle: Separate Timers for Database Transactions and Serialization (MANDATORY)
+- **MANDATORY**: Separate timing for database transactions from serialization/post-processing operations
+- **Database transaction timers**: Measure only database operations (Cypher queries, NeoModel operations)
+  - Timer starts before database call
+  - Timer ends immediately after database operation completes
+  - Display format: `"Upserting <count> <Objects>... done! (<time>s)"`
+- **Serialization timers**: Separate timers in serialization helper methods measure serialization time
+  - Use `timer_enabled: bool = True` parameter in `_serialize_<multiple_objects>` methods
+  - Display format: `"Serializing <count> <ObjectTypes>... done! (<time>s)"`
+  - Thin wrapper `_serialize_<single_object>` methods call plural methods with `timer_enabled=False`
+- **Rationale**: Provides clear visibility into database performance vs serialization performance, prevents duplicate timer messages
+- **Benefits**: Clean timer output, clear performance metrics, no duplicate messages
+
 ## Class Constants and Initialization Defaults
 
 ### Principle: Extract Initialization Defaults as Class Constants
