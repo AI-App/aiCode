@@ -384,6 +384,52 @@ _connection_pool = initialize_pool()      # Side effects on import
       ...
   ```
 
+## Function Call Conventions
+
+### Principle: Prefer Keyword Arguments Over Positional Arguments (MANDATORY)
+- **MANDATORY**: Generally prefer keyword arguments in function/method calls over positional-only arguments, especially when calling methods with multiple parameters or when the argument list may change over time.
+- **Rationale**: Keyword arguments provide better resilience to API changes - if a method's signature changes (e.g., parameters are added, removed, or reordered), keyword-based calls are less likely to break. They also improve code readability and self-documentation.
+- **When to use keyword arguments**:
+  - When calling methods with multiple parameters (2+ parameters)
+  - When calling methods that may have their signatures changed in the future
+  - When the parameter order might be ambiguous or non-obvious
+  - When calling methods defined in external libraries or frameworks
+- **When positional arguments are acceptable**:
+  - Single-parameter calls where the parameter name is obvious from context
+  - Calls to well-established, stable APIs where the parameter order is conventional (e.g., `print(value)`, `len(sequence)`)
+  - When the method signature explicitly documents positional-only parameters (rare)
+- **Benefits**:
+  - **Resilience**: Less likely to break when method signatures change
+  - **Readability**: Code is self-documenting - parameter names clarify intent
+  - **Safety**: Reduces risk of passing arguments in the wrong order
+  - **Maintainability**: Easier to refactor and update when APIs evolve
+- **Example of good practice**:
+  ```python
+  # CORRECT: Keyword arguments make intent clear and are resilient to signature changes
+  schema.upsert_asset_type(uri="hcb-hvac.AirHandlingUnit", label="Air Handling Unit")
+  po.upsert_asset(name="AHU-01", asset_type_uri="hcb-hvac.AirHandlingUnit", uuid="abc-123")
+  po.add_points_to_asset(asset_name="AHU-01", point_names=["AHU-01-SAT", "AHU-01-RAT"])
+
+  # CORRECT: Lambda calls with keyword arguments
+  lambda po: po.upsert_asset(name=name, asset_type_uri=asset_type_uri, uuid=uuid)
+  lambda schema: schema.upsert_asset_type(uri=uri, label=label)
+  ```
+- **Example of bad practice** (DO NOT USE):
+  ```python
+  # WRONG: Positional arguments are brittle - will break if signature changes
+  schema.upsert_asset_type("hcb-hvac.AirHandlingUnit", "Air Handling Unit")
+  po.upsert_asset("AHU-01", "hcb-hvac.AirHandlingUnit", "abc-123")
+  po.add_points_to_asset("AHU-01", ["AHU-01-SAT", "AHU-01-RAT"])
+
+  # WRONG: Lambda calls with positional arguments - fragile to API changes
+  lambda po: po.upsert_asset(name, asset_type_uri, uuid)
+  lambda schema: schema.upsert_asset_type(uri, label)
+  ```
+- **Note**: This principle is especially important when:
+  - Calling methods through lambda wrappers or helper functions (where the signature may change)
+  - Working with evolving APIs or libraries under active development
+  - Writing wrapper code that delegates to underlying methods (as the underlying signatures may change)
+
 ## Dataclass Patterns
 
 ### Principle: Dataclass Creation Timing
