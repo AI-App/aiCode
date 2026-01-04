@@ -97,7 +97,6 @@ __all__ = [
 - When importing from unrelated modules in the codebase
 - When the relative path would be unclear or overly complex
 - At the top-level of the package structure (where relative imports don't make sense)
-- **MANDATORY**: When relative imports require 3 or more dots (e.g., `from ...module` or `from ....module`) - these are error-prone and should be converted to absolute imports for robustness
 
 ### Example of Good Practice
 ```python
@@ -341,6 +340,50 @@ _connection_pool = initialize_pool()      # Side effects on import
 - **Rationale**: Self-documenting, DRY, easier to maintain
 - **Benefits**: Clarity, consistency, single source of truth for type definitions
 
+### Principle: Transparent Type-Hinting with Named Types (MANDATORY)
+- **MANDATORY**: Use named type aliases for all types that represent domain concepts, not just complex nested types
+- **Pattern**: Define type aliases at the top of the module (or in a shared `models.py` file) for domain-specific types (e.g., `AssetTypeUri`, `PointRoleUri`, `AssetName`, `PointName`) and use them consistently throughout method signatures
+- **Rationale**: Makes type hints self-documenting and transparent - readers immediately understand what each parameter represents without consulting documentation
+- **Benefits**:
+  - **Clarity**: `def upsert_asset(name: AssetName, asset_type_uri: AssetTypeUri)` is immediately clear
+  - **Transparency**: Type hints reveal domain semantics, not just technical types
+  - **Consistency**: Single source of truth for type definitions across the codebase
+  - **Refactoring safety**: Changing the underlying type (e.g., from `str` to a custom class) only requires updating the alias definition
+- **When to use**: Apply to all domain-specific types, even simple ones like `str` when they represent specific domain concepts (URIs, names, identifiers)
+- **Example**:
+  ```python
+  # At top of module or in models.py
+  AssetTypeUri = str  # URI for AssetType in dotted-namespace format
+  PointRoleUri = str  # URI for PointRole in dotted-namespace format
+  AssetName = str  # Primary identifier for Asset instances
+  PointName = str  # Primary identifier for Point instances
+
+  # In method signatures
+  def upsert_asset(
+      self,
+      name: AssetName,  # Clear: this is an Asset name
+      asset_type_uri: AssetTypeUri  # Clear: this is an AssetType URI
+  ) -> Asset:
+      ...
+
+  def add_point_roles_to_point(
+      self,
+      point_name: PointName,  # Clear: this is a Point name
+      point_role_uris: list[PointRoleUri]  # Clear: list of PointRole URIs
+  ) -> list[PointRole]:
+      ...
+  ```
+- **Anti-pattern** (DO NOT USE):
+  ```python
+  # WRONG: Ambiguous: what does this str represent?
+  def upsert_asset(self, name: str, asset_type_uri: str) -> Asset:
+      ...
+
+  # WRONG: Unclear: is this a URI? a name? what format?
+  def add_point_roles_to_point(self, point_name: str, point_role_uris: list[str]) -> list[PointRole]:
+      ...
+  ```
+
 ## Dataclass Patterns
 
 ### Principle: Dataclass Creation Timing
@@ -361,6 +404,56 @@ def create_item(self, data: dict) -> Item:
 def create_item(self, data: dict) -> Item:
     self._save_to_db(data)  # Business logic first
     return Item(**data)  # CORRECT: Create right before return
+```
+
+## Code Cleanup and Maintenance
+
+### Principle: Remove Unused Code (MANDATORY)
+- **MANDATORY**: Regularly audit and remove unused code to maintain codebase cleanliness and reduce maintenance burden.
+- **Unused code includes**:
+  - Unused imports (not referenced anywhere in the module)
+  - Unused private methods (methods starting with `_` that are never called)
+  - Unused query files (Cypher query files not loaded in `_queries.py` or used in code)
+  - Unused constants or type aliases
+  - Obsolete helper methods (e.g., `_get_point_role_and_aspect_type_caches` if replaced by better patterns)
+- **Rationale**: Unused code:
+  - Increases cognitive load for maintainers
+  - Can mislead developers into thinking code is used
+  - Adds unnecessary maintenance overhead
+  - Clutters the codebase
+- **When to remove**: During code reviews, refactoring sessions, or when explicitly identified
+- **Benefits**: Cleaner codebase, easier navigation, reduced confusion
+
+**Example of good practice**:
+```python
+# ✅ All imports are used
+from dataclasses import dataclass
+from typing import Any, Optional
+from neomodel.exceptions import DoesNotExist
+
+# ✅ All methods are called somewhere
+def _extract_namespace_from_uri(uri: str) -> str:
+    # ... used in multiple places
+```
+
+**Example of bad practice** (DO NOT USE):
+```python
+# ❌ Unused import
+from typing import Union  # Never used
+
+# ❌ Unused private method
+def _generate_uri_from_label(label: str) -> str:
+    # ... never called anywhere
+    pass
+
+# ❌ Obsolete helper method (replaced by better pattern)
+def _get_point_role_and_aspect_type_caches(
+    self,
+    point_role_uris: Optional[set[PointRoleURI]] = None,
+    aspect_type_uris: Optional[set[AspectTypeURI]] = None
+) -> tuple[dict[PointRoleURI, PointRole], dict[AspectTypeURI, AspectType]]:
+    # ... no longer used - replaced by batch serialization helpers
+    pass
 ```
 
 ## Import Organization
@@ -451,19 +544,6 @@ import argparse
       # Map labels to URIs and call library method
       schema.add_point_roles_to_asset_type(asset_type_uri, point_role_uris)
   ```
-
-### Principle: Separate Timers for Database Transactions and Serialization (MANDATORY)
-- **MANDATORY**: Separate timing for database transactions from serialization/post-processing operations
-- **Database transaction timers**: Measure only database operations (Cypher queries, NeoModel operations)
-  - Timer starts before database call
-  - Timer ends immediately after database operation completes
-  - Display format: `"Upserting <count> <Objects>... done! (<time>s)"`
-- **Serialization timers**: Separate timers in serialization helper methods measure serialization time
-  - Use `timer_enabled: bool = True` parameter in `_serialize_<multiple_objects>` methods
-  - Display format: `"Serializing <count> <ObjectTypes>... done! (<time>s)"`
-  - Thin wrapper `_serialize_<single_object>` methods call plural methods with `timer_enabled=False`
-- **Rationale**: Provides clear visibility into database performance vs serialization performance, prevents duplicate timer messages
-- **Benefits**: Clean timer output, clear performance metrics, no duplicate messages
 
 ## Class Constants and Initialization Defaults
 
@@ -594,22 +674,6 @@ print("WARNING: Some CSV labels not found in database")  # Emoji removed
 print("ERROR: Found 5 assets with conflicting asset_type values")  # Emoji removed
 print("SUCCESS: All CSV labels verified in database")  # Emoji removed
 ```
-
-### Windows UTF-8 Encoding Requirement
-
-- **When scripts use emoji characters**: Some scripts in the codebase may use emoji characters in their output (e.g., 📊, ✅, 🔍, 🚀). These scripts require UTF-8 encoding to run correctly on Windows.
-- **Windows users**: When running scripts that use emoji characters, set the `PYTHONIOENCODING` environment variable to `utf-8` before execution.
-- **PowerShell example**:
-  ```powershell
-  $env:PYTHONIOENCODING='utf-8'
-  uv run python buildings/.../script.py
-  ```
-- **Command line example** (single command):
-  ```powershell
-  $env:PYTHONIOENCODING='utf-8'; uv run python buildings/.../script.py
-  ```
-- **Note**: This is a Windows-specific workaround. On Linux/macOS, UTF-8 encoding is typically the default and no special configuration is needed.
-- **Preferred approach**: Avoid emoji characters in new code to ensure cross-platform compatibility without requiring environment variable configuration.
 
 ---
 
