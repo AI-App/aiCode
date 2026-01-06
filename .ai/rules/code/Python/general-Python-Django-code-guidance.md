@@ -70,6 +70,15 @@ When integrating Django with non-standard backends (graph databases, external AP
    - Django Admin calls `serializable_value(field_name)` → Backend may not handle `None` field names
    - **Solution**: Monkey-patch backend model classes to handle edge cases
 
+8. **Metaclass Conflicts**
+   - Base class may need to inherit from both backend base class and `ABC` → Python requires combined metaclass
+   - **Solution**: Create combined metaclass that inherits from both backend's metaclass and `ABCMeta`
+
+9. **Form Validation Method Differences**
+   - Django Admin calls `full_clean(validate_unique, validate_constraints)` → Backend may not accept these parameters
+   - Django Admin calls `validate_constraints()` → Backend may not have this method
+   - **Solution**: Override `full_clean()` to accept and ignore Django ORM parameters, add no-op `validate_constraints()` method
+
 **Rationale**: All of these differences are fundamental to Django-backend integration and should be handled once in base classes, not repeated in every admin class.
 
 ### Principle: Model Configuration Requirements
@@ -78,12 +87,33 @@ When integrating Django with non-standard backends (graph databases, external AP
 
 **Common Requirements**:
 
-1. **Add `pk` property**: Return backend's unique identifier to satisfy Django Admin's expectation of `obj.pk`
+1. **Add `pk` property**: Return backend's unique identifier to satisfy Django Admin's expectation of `obj.pk`. If the backend doesn't allow querying by internal identifiers, use a preferred unique field (e.g., `uri`, `name`) instead.
    ```python
+   # Pattern 1: Simple pk property (if backend allows querying by internal identifier)
    @property
    def pk(self):
-       """Return unique identifier as pk for Django Admin compatibility."""
+       """Return unique identifier as pk to adapt backend to Django conventions."""
        return self.backend_unique_id
+
+   # Pattern 2: Abstract pk property with field name specification (recommended)
+   # In base class:
+   class BackendNode(BackendBase, ABC, metaclass=CombinedMeta):
+       _pk_field_name: str = None  # Each subclass must set this
+
+       @property
+       @abstractmethod
+       def pk(self):
+           """Return unique identifier as pk to adapt backend to Django conventions."""
+           raise NotImplementedError("Subclasses must implement pk property")
+
+   # In subclass:
+   class Asset(BackendNode):
+       _pk_field_name = 'name'  # Field name used for primary key queries
+
+       @property
+       def pk(self):
+           """Return name as pk to adapt backend to Django conventions."""
+           return self.name
    ```
 
 2. **Set `managed = False` in Meta**: Prevents Django from expecting database tables
@@ -100,16 +130,38 @@ When integrating Django with non-standard backends (graph databases, external AP
 
 4. **Provide Django-compatible field interface**: Ensure fields have attributes Django Admin expects (e.g., `empty_values`)
 
+5. **Override form validation methods if needed**: If backend doesn't support Django ORM validation parameters, override `full_clean()` and add `validate_constraints()` method
+   ```python
+   def full_clean(self, exclude=None, validate_unique=True, validate_constraints=True):
+       """Override to accept Django ORM parameters that backend doesn't support."""
+       # Accept parameters but ignore Django ORM-specific ones
+       return super().full_clean(exclude=exclude)
+
+   def validate_constraints(self, exclude=None):
+       """Override to satisfy Django Admin's expectations."""
+       # Backend doesn't have Django ORM constraints, so this is a no-op
+       pass
+   ```
+
+6. **Provide default `__str__` method**: Base class can provide default string representation using `pk` property
+   ```python
+   def __str__(self) -> str:
+       """Default string representation using pk property."""
+       return str(self.pk)
+   ```
+
 **Example**:
 ```python
 class Asset(BackendNode):
+    _pk_field_name = 'name'  # Field name used for primary key queries
+
     name: str
     # ... other fields ...
 
     @property
     def pk(self):
-        """Return element_id as pk for Django Admin compatibility."""
-        return self.element_id
+        """Return name as pk to adapt backend to Django conventions."""
+        return self.name
 
     class Meta:
         app_label: str = 'your_app'
@@ -118,6 +170,8 @@ class Asset(BackendNode):
         ordering: tuple[str, ...] = ('name',)
         managed = False  # Prevent Django from managing this model
 ```
+
+**Note**: If the backend base class provides a default `__str__` method that returns `str(self.pk)`, subclasses don't need to implement `__str__` unless they need a different string representation.
 
 ### Principle: Admin Class Simplicity
 
@@ -481,6 +535,76 @@ LOGGING = {
 1. Mock `model._meta.pk` in `ChangeList.__init__` if needed
 2. Set `pk_attname = None` after initialization
 3. Restore original `pk` in `finally` block
+
+### Pattern: Metaclass Conflict Resolution
+
+**Issue**: Base class needs to inherit from both backend base class and `ABC`, but they have different metaclasses.
+
+**Solution**:
+1. Get the metaclass of the backend base class using `type(BackendBase)`
+2. Create a combined metaclass that inherits from both backend's metaclass and `ABCMeta`
+3. Use the combined metaclass in the base class definition
+
+**Example**:
+```python
+from abc import ABC, ABCMeta, abstractmethod
+from backend import BackendBase
+
+# Get the metaclass of BackendBase to combine with ABCMeta
+_BackendBaseMeta = type(BackendBase)
+
+class _CombinedMeta(_BackendBaseMeta, ABCMeta):
+    """Combined metaclass for AdaptedBackendNode.
+
+    This metaclass combines the metaclass of BackendBase with ABCMeta
+    to allow AdaptedBackendNode to inherit from both BackendBase and ABC without metaclass conflicts.
+    """
+    pass
+
+class AdaptedBackendNode(BackendBase, ABC, metaclass=_CombinedMeta):
+    """Base class for backend nodes that work with Django Admin."""
+    # ... rest of class ...
+```
+
+### Pattern: Form Validation Method Adaptation
+
+**Issue**: Django Admin's `ModelForm` calls `full_clean(validate_unique, validate_constraints)` and `validate_constraints()`, but backend doesn't support these Django ORM-specific parameters/methods.
+
+**Solution**:
+1. Override `full_clean()` in base model class to accept Django ORM parameters but ignore them
+2. Add no-op `validate_constraints()` method to base model class
+
+**Example**:
+```python
+def full_clean(self, exclude=None, validate_unique=True, validate_constraints=True):
+    """Override to accept Django ORM parameters that backend doesn't support.
+
+    Django Admin's ModelForm calls full_clean() with validate_unique and validate_constraints
+    parameters, but backend's full_clean() doesn't accept these parameters.
+    This override accepts them but ignores them, since backend doesn't have Django ORM
+    constraints or unique validation in the same way.
+
+    Args:
+        exclude: Fields to exclude from validation (passed to parent)
+        validate_unique: Ignored (Django ORM-specific)
+        validate_constraints: Ignored (Django ORM-specific)
+    """
+    # Call parent full_clean with only the exclude parameter
+    return super().full_clean(exclude=exclude)
+
+def validate_constraints(self, exclude=None):
+    """Override to satisfy Django Admin's expectations.
+
+    Django Admin's ModelForm calls validate_constraints() on the model instance,
+    but backend doesn't have this method. This override provides a no-op
+    implementation since backend doesn't have Django ORM constraints.
+
+    Args:
+        exclude: Fields to exclude from constraint validation (ignored)
+    """
+    # Backend doesn't have Django ORM constraints, so this is a no-op
+    pass
+```
 
 ## Troubleshooting Guide
 
