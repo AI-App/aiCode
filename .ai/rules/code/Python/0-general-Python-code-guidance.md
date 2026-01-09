@@ -811,3 +811,40 @@ for row in rows:
     aspect_node = Aspect.nodes.get(uri=row['uri'])  # N queries in loop!
     # ... use aspect_node
 ```
+
+### Principle: NodeSets and QuerySets Are Iterable (MANDATORY)
+
+- **MANDATORY**: Do not unnecessarily materialize NodeSets or QuerySets into lists just for iteration.
+- **Pattern**: Iterate directly over NodeSets/QuerySets - they are already iterable.
+- **When materialization is acceptable**:
+  - When you need to attach prefetched data to instances (but still return the original queryset)
+  - When you need to cache data on an admin instance (but still return the original queryset)
+  - When you need to count items multiple times (but prefer `.count()` method)
+- **When materialization is NOT acceptable**:
+  - Just for iteration: `for item in list(queryset):` → Use `for item in queryset:` instead
+  - Just for collecting identifiers: `uris = [item.uri for item in list(queryset)]` → Use `uris = [item.uri for item in queryset]` instead
+- **Rationale**: NodeSets and QuerySets are iterable by design. Materializing to lists adds unnecessary overhead and memory usage.
+- **Benefits**: More efficient, less memory usage, cleaner code
+
+**Example of good practice**:
+```python
+# CORRECT: Iterate directly over NodeSet
+asset_types = AssetType.nodes.all()
+asset_type_uris = [at.uri for at in asset_types]  # NodeSet is iterable
+
+# CORRECT: Iterate directly in loop
+for asset_type in asset_types:
+    process(asset_type)
+```
+
+**Example of bad practice** (DO NOT USE):
+```python
+# WRONG: Unnecessary materialization just for iteration
+asset_types = AssetType.nodes.all()
+asset_types_list = list(asset_types)  # WRONG: Unnecessary
+asset_type_uris = [at.uri for at in asset_types_list]
+
+# WRONG: Materializing just for loop
+for asset_type in list(asset_types):  # WRONG: Unnecessary
+    process(asset_type)
+```

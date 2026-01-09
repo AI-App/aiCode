@@ -64,7 +64,12 @@ When integrating Django with non-standard backends (graph databases, external AP
 
 6. **Model Metadata Differences**
    - Django expects `model._meta.pk` to exist → Backend models may not have this
-   - **Solution**: Mock `model._meta.pk` in `ChangeList.__init__` if needed
+   - Django Admin expects consistent `model._meta` object → Backend may recreate `_meta` on each access
+   - Django Admin uses `model._meta.model_name` for URL generation → Backend may use base class name instead of actual class name
+   - **Solution**: 
+     - Cache `_meta` classproperty after first creation to ensure Django Admin gets consistent object
+     - Explicitly set `opts.model_name` and `opts.object_name` after `contribute_to_class` to ensure correct model name
+     - Skip processing for base classes that start with `_` to avoid URL conflicts
 
 7. **Serialization Differences**
    - Django Admin calls `serializable_value(field_name)` → Backend may not handle `None` field names
@@ -162,6 +167,41 @@ class Asset(BackendNode):
     def pk(self):
         """Return name as pk to adapt backend to Django conventions."""
         return self.name
+
+    @classproperty
+    def _meta(self):
+        """Return Django Options object, cached after first creation."""
+        # Cache _meta to avoid recreating Options object each time
+        # This is important for Django Admin to properly read verbose_name and verbose_name_plural
+        if hasattr(self, '_cached_meta'):
+            return self._cached_meta
+
+        opts = Options(self.Meta, app_label=self.Meta.app_label)
+        actual_class_name = self.__name__
+
+        # Skip processing for base classes that start with underscore
+        # This prevents Django Admin from trying to register abstract-like base classes
+        # and avoids URL conflicts where all subclasses resolve to the base class name.
+        if actual_class_name.startswith('_'):
+            import warnings
+            warnings.warn(
+                f"Model class name '{actual_class_name}' starts with underscore. "
+                f"This may cause Django Admin URL conflicts if used as a base class."
+            )
+
+        opts.contribute_to_class(self, actual_class_name)
+
+        # Explicitly set model_name and object_name AFTER contribute_to_class
+        # Django Admin uses model._meta.model_name for URL generation
+        # We set these explicitly to ensure they're correct, even if contribute_to_class has issues
+        opts.model_name = actual_class_name.lower()
+        opts.object_name = actual_class_name
+        # Note: label_lower is a read-only property computed by Django from app_label and model_name
+
+        # ... rest of _meta setup ...
+
+        setattr(self, '_cached_meta', opts)
+        return opts
 
     class Meta:
         app_label: str = 'your_app'
@@ -513,10 +553,134 @@ LOGGING = {
 
 **Issue**: Django Admin expects queryset-like objects, but backend returns lists or different interfaces.
 
+**CRITICAL WARNING**: **NEVER** return a plain `list` from `get_queryset()` or any method that Django Admin expects to return a QuerySet/NodeSet. Django Admin relies on queryset-like objects for:
+- Pagination (calls `.count()`)
+- Filtering and ordering (calls `.order_by()`, `.filter()`)
+- Slicing (calls `.__getitem__()`)
+- Cloning (calls `._clone()`)
+
+Returning a list will cause Django Admin to fail with opaque "Database error" messages when it tries to call queryset methods that don't exist on lists.
+
 **Solution**:
-1. Create queryset-like wrapper class
-2. Override `ChangeList.get_results` to wrap backend collections
-3. Provide `.count()`, `._clone()`, and iteration methods
+1. **Always return the original queryset/NodeSet** from `get_queryset()`, never a list
+2. If you need to materialize the queryset (e.g., to attach prefetched data), do so internally but still return the queryset
+3. If backend returns lists, create queryset-like wrapper class
+4. Override `ChangeList.get_results` to wrap backend collections with wrapper
+5. Provide `.count()`, `._clone()`, and iteration methods in wrapper
+
+### Pattern: Instance-Level Caching for Django Admin Display Methods
+
+**Issue**: Django Admin may create new instances of model objects when rendering the changelist, causing prefetched data attached to original instances to be lost.
+
+**Solution**: Use instance-level caching on the `ModelAdmin` class to store prefetched data, ensuring it persists across Django Admin's internal object re-instantiations.
+
+**Pattern**:
+```python
+class AssetTypeAdmin(DjangoNeoModelAdmin):
+    def get_queryset(self, request):
+        """Prefetch related data and cache it on admin instance."""
+        asset_types = super().get_queryset(request)
+        
+        # Collect identifiers for batch query
+        asset_type_uris = [at.uri for at in asset_types]
+        
+        # Execute batch query to prefetch relationships
+        results, _ = db.cypher_query(
+            GET_ASSET_TYPES_WITH_RELATIONSHIPS,
+            {'asset_type_uris': asset_type_uris}
+        )
+        
+        # Build cache on admin instance (not on model instances)
+        if not hasattr(self, '_prefetch_cache'):
+            self._prefetch_cache = {}
+        
+        # Store prefetched data in cache keyed by primary identifier
+        for row in results:
+            uri = row['uri']
+            self._prefetch_cache[uri] = {
+                'point_role_uris': row.get('point_role_uris', [])
+            }
+        
+        # Also attach to instances if possible (for direct access)
+        for at in asset_types:
+            if at.uri in self._prefetch_cache:
+                at._prefetched_point_role_uris = self._prefetch_cache[at.uri]['point_role_uris']
+        
+        return asset_types  # Return queryset, not list
+    
+    def point_roles(self, obj):
+        """Display method that uses cached prefetched data."""
+        # First check if data is attached directly to instance
+        if hasattr(obj, '_prefetched_point_role_uris'):
+            uris = obj._prefetched_point_role_uris
+        # Fall back to instance-level cache
+        elif hasattr(self, '_prefetch_cache') and obj.uri in self._prefetch_cache:
+            uris = self._prefetch_cache[obj.uri].get('point_role_uris', [])
+        else:
+            uris = []
+        
+        # Filter out None values from OPTIONAL MATCH
+        uris = [uri for uri in uris if uri is not None]
+        return '   |   '.join(uris) if uris else '-'
+```
+
+**Rationale**:
+- Django Admin may create new instances when rendering, losing data attached to original instances
+- Instance-level cache on `ModelAdmin` persists across all object instantiations
+- Display methods can check both instance attributes and cache for maximum compatibility
+
+**Benefits**:
+- Prefetched data persists even if Django Admin creates new instances
+- Works with both direct instance attachment and cache lookup
+- Enables efficient bulk queries to avoid N+1 problems
+
+### Pattern: Django Admin Display Separators (MANDATORY)
+
+**Issue**: Django Admin tables do not display newlines in cell content, so multi-line displays (e.g., bulleted lists) are not rendered correctly.
+
+**Solution**: Use pipe-separated format (`'   |   '`) instead of newlines for list displays in Django Admin tables.
+
+**Pattern**:
+```python
+def point_roles(self, obj):
+    """Display method that returns pipe-separated list."""
+    uris = self._get_point_role_uris(obj)
+    # Filter out None values from OPTIONAL MATCH
+    uris = [uri for uri in uris if uri is not None]
+    # Use pipe separator instead of newlines (Django Admin doesn't display newlines)
+    return '   |   '.join(uris) if uris else '-'
+```
+
+**Rationale**:
+- Django Admin tables render cell content as plain text, not HTML
+- Newlines (`\n`) are not displayed in table cells
+- Pipe separators (`'   |   '`) provide clear visual separation while being readable in table format
+
+**Benefits**:
+- Clear visual separation between items
+- Readable in Django Admin table format
+- Consistent formatting across all list displays
+- Works with Django Admin's plain text rendering
+
+**Example of good practice**:
+```python
+# CORRECT: Pipe-separated format for Django Admin tables
+def asset_types(self, obj):
+    uris = self._get_asset_type_uris(obj)
+    return '   |   '.join(uris) if uris else '-'
+
+def aspects(self, obj):
+    uris = self._get_aspect_uris(obj)
+    return '   |   '.join(uris) if uris else '-'
+```
+
+**Example of bad practice** (DO NOT USE):
+```python
+# WRONG: Newlines not displayed in Django Admin tables
+def asset_types(self, obj):
+    uris = self._get_asset_type_uris(obj)
+    return '\n'.join(f'- {uri}' for uri in uris) if uris else '-'  # Newlines won't show
+```
 
 ### Pattern: Field Interface Adaptation
 
@@ -611,16 +775,18 @@ def validate_constraints(self, exclude=None):
 ### Issue: "Database error" Page in Django Admin
 
 **Possible Causes**:
-1. Backend connection not initialized
-2. Exception in admin code
-3. Missing `managed = False` in Meta classes
-4. Permission methods not overridden
+1. **`get_queryset()` returning a `list` instead of QuerySet/NodeSet** (most common)
+2. Backend connection not initialized
+3. Exception in admin code
+4. Missing `managed = False` in Meta classes
+5. Permission methods not overridden
 
 **Solutions**:
-1. Ensure backend connection is initialized in Django settings
-2. Add error handling and logging to admin methods
-3. Set `managed = False` in all backend model Meta classes
-4. Override permission methods to return `True`
+1. **CRITICAL**: Ensure `get_queryset()` returns a QuerySet/NodeSet, never a `list`. Django Admin requires queryset-like objects for pagination, filtering, and other operations.
+2. Ensure backend connection is initialized in Django settings
+3. Add error handling and logging to admin methods
+4. Set `managed = False` in all backend model Meta classes
+5. Override permission methods to return `True`
 
 ### Issue: "ValueError: No such property pk"
 
@@ -640,13 +806,24 @@ def validate_constraints(self, exclude=None):
 - Base `ModelAdmin` class should override `get_search_results` to use backend's query objects
 - Base `ChangeList` class should override `get_queryset` to bypass Django ORM filtering
 
-### Issue: "AttributeError: 'list' object has no attribute 'count'"
+### Issue: "AttributeError: 'list' object has no attribute 'count'" or "Database error" Page
 
-**Cause**: Django Admin expects queryset-like objects, but backend returns lists.
+**Cause**: Django Admin expects queryset-like objects (QuerySet/NodeSet), but `get_queryset()` returned a plain `list`.
+
+**CRITICAL**: **NEVER** return a `list` from `get_queryset()`. Django Admin requires queryset-like objects that support:
+- `.count()` for pagination
+- `.order_by()` for sorting
+- `.filter()` for filtering
+- `._clone()` for queryset cloning
+- Slicing operations
+
+When Django Admin tries to call these methods on a list, it fails with opaque "Database error" messages.
 
 **Solution**:
-- Create queryset-like wrapper class
-- Override `ChangeList.get_results` to wrap backend collections with wrapper
+- **Always return the original queryset/NodeSet** from `get_queryset()`, never a list
+- If you need to materialize data (e.g., for prefetching), do so internally but return the queryset
+- If backend naturally returns lists, create a queryset-like wrapper class that provides all required methods
+- Override `ChangeList.get_results` to wrap backend collections with the wrapper
 
 ## Best Practices
 
