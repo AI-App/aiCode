@@ -1,5 +1,9 @@
+[submodule "Anthropic/Claude-Code"]
+  path = .submodules/Anthropic/Claude-Code
+  url = git@github.com:Anthropics/Claude-Code
+
 [submodule "Ralph/AgrimSingh.Ralph-Wiggum-Cursor"]
-  path = Ralph/AgrimSingh.Ralph-Wiggum-Cursor
+  path = .submodules/Ralph/AgrimSingh.Ralph-Wiggum-Cursor
   url = git@github.com:AgrimSingh/Ralph-Wiggum-Cursor
 
 [submodule "Ralph/FrankBria.Ralph-Claude-Code"]
