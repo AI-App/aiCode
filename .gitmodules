@@ -1,3 +1,7 @@
 [submodule "Ralph/FrankBria.Ralph-Claude-Code"]
   path = .submodules/Ralph/FrankBria.Ralph-Claude-Code
   url = git@github.com:FrankBria/Ralph-Claude-Code
+
+[submodule "Ralph/SnarkTank.Ralph"]
+	path = .submodules/Ralph/SnarkTank.Ralph
+	url = git@github.com:SnarkTank/Ralph
