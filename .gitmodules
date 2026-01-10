@@ -1,0 +1,3 @@
+[submodule "Ralph/FrankBria.Ralph-Claude-Code"]
+  path = .submodules/Ralph/FrankBria.Ralph-Claude-Code
+  url = git@github.com:FrankBria/Ralph-Claude-Code
