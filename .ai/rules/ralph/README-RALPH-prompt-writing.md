@@ -160,6 +160,12 @@ If stuck after 15 iterations:
 Provide clear technical context:
 
 ```markdown
+## Project Setup
+
+- **Project Root Directory**: [path]
+- **Python Executable**: [command, e.g., `uv run python`]
+- **Files & Folders Ralph Can Modify**: [explicit list]
+
 ## Context
 
 - Use Express.js for the API
@@ -177,6 +183,7 @@ Provide clear technical context:
 ```
 
 **Key Points:**
+- **Always include Project Setup section** with project root, Python executable, and allowed files/folders
 - Specify technology stack
 - Document existing patterns to follow
 - List hard constraints
@@ -257,6 +264,29 @@ Here's a comprehensive template:
 ## Overview
 
 [2-3 sentence description of what needs to be built/fixed/improved]
+
+## Project Setup
+
+**MANDATORY**: Specify these basics for every README-RALPH.md:
+
+- **Project Root Directory**: [Absolute or relative path to project root]
+  - All commands must be run from this directory
+  - Example: `Dana projects/Honeywell/Forge-Cognition`
+
+- **Python Executable**: [How to run Python scripts]
+  - Specify the exact command to use (e.g., `uv run python`, `python`, `python3`)
+  - Specify that commands must be run from project root
+  - Example: `uv run python` (run from project root directory)
+
+- **Files & Folders Ralph Can Modify**: [Explicit list of what Ralph is allowed to change]
+  - List specific files that can be modified
+  - List directories where Ralph can create/write files (e.g., exercise directory)
+  - Be explicit about what's allowed vs. what's off-limits
+  - Example:
+    - `_RALPH/` directory (Ralph exercise directory - can write whatever it wants)
+    - `_RALPH/[exercise-name]/` (specific exercise directory)
+    - `autonomous_facility/ontology/physical/models.py` (specific file to modify)
+    - `autonomous_facility/ontology/physical/schema/models.py` (specific file to modify)
 
 ## Requirements
 
