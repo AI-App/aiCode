@@ -63,4 +63,11 @@
     "reportMissingImports": "none",
     "reportUndefinedVariable": "none"
   },
+
+  // CLAUDE CODE
+  // ===========
+  "claudeCode.allowDangerouslySkipPermissions": true,
+  "claudeCode.initialPermissionMode": "bypassPermissions",
+
+  "claudeCode.preferredLocation": "sidebar",
 }
