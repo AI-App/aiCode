@@ -1,11 +1,20 @@
 ---
-description: writing README-RALPH.md prompt files
+description: writing !-README-RALPH.md prompt files
 alwaysApply: false
 ---
 
-# Writing README-RALPH.md Prompt Files
+# Writing !-README-RALPH.md Prompt Files
 
-This guide provides best practices for writing `README-RALPH.md` prompt files that drive Ralph autonomous development loops. These files serve as the persistent prompt that gets fed to the AI agent in each iteration.
+This guide provides best practices for writing `!-README-RALPH.md` prompt files that drive Ralph autonomous development loops. These files serve as the persistent prompt that gets fed to the AI agent in each iteration.
+
+## File Naming Convention
+
+Ralph prompt files follow a specific naming pattern for easy identification:
+
+- **`!-!-README-RALPH.md`** - Main prompt file for the Ralph loop (prefixed with `!-` for visibility)
+- **`!-RALPH-CMD.md`** - Optional command reference file (stores the actual `/ralph-loop` command for easy copying)
+
+The `!-` prefix ensures these critical files appear at the top of directory listings, making them easy to locate among other project files.
 
 ## Core Principles
 
@@ -23,7 +32,7 @@ Keep trying until success. The loop handles retry logic automatically.
 
 ## Essential Structure
 
-A well-structured `README-RALPH.md` should include:
+A well-structured `!-README-RALPH.md` should include:
 
 ```markdown
 # [Task Name]
@@ -267,7 +276,7 @@ Here's a comprehensive template:
 
 ## Project Setup
 
-**MANDATORY**: Specify these basics for every README-RALPH.md:
+**MANDATORY**: Specify these basics for every !-README-RALPH.md:
 
 - **Project Root Directory**: [Absolute or relative path to project root]
   - All commands must be run from this directory
@@ -462,7 +471,7 @@ Use the existing code.
 
 ## Iteration and Refinement
 
-Remember that `README-RALPH.md` files can and should be refined based on what you learn:
+Remember that `!-README-RALPH.md` files can and should be refined based on what you learn:
 
 1. **After each iteration**: Review what worked and what didn't
 2. **Update criteria**: Make success criteria more specific if needed
