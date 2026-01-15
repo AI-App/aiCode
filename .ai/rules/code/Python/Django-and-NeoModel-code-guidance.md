@@ -1,6 +1,6 @@
-# General Python Django Code Guidance
+# Django and NeoModel Code Guidance
 
-This document provides general principles for adapting Django and Django Admin to work with non-standard backends or systems that don't follow Django's default assumptions. These principles apply to any Django integration with alternative ORMs, graph databases, external APIs, or other non-Django-ORM data sources.
+This document provides principles and patterns for integrating Django and Django Admin with NeoModel (Neo4j Object Graph Mapper). While many principles apply to any Django integration with non-standard backends (alternative ORMs, graph databases, external APIs, etc.), this document focuses specifically on NeoModel integration patterns and best practices learned from real-world implementations.
 
 ## Overview
 
@@ -10,7 +10,14 @@ Django Admin is designed to work with Django's ORM, which assumes:
 - Query operations use Django's `Q` objects
 - Models follow Django's field and relationship patterns
 
-When integrating Django with non-standard backends (graph databases, external APIs, alternative ORMs, etc.), these assumptions often don't hold. This document provides patterns for adapting Django Admin to work with such systems.
+When integrating Django with NeoModel (Neo4j OGM), these assumptions don't hold. NeoModel uses:
+- Graph nodes instead of database tables
+- NeoModel `Q` objects from `neomodel.match_q` instead of Django `Q` objects
+- `NodeSet` objects instead of Django QuerySets
+- Property-based fields instead of Django model fields
+- Relationship traversal instead of foreign keys
+
+This document provides patterns for adapting Django Admin and Django REST Framework to work with NeoModel, based on real-world implementation experience.
 
 ## Core Adaptation Principles
 
@@ -66,7 +73,7 @@ When integrating Django with non-standard backends (graph databases, external AP
    - Django expects `model._meta.pk` to exist → Backend models may not have this
    - Django Admin expects consistent `model._meta` object → Backend may recreate `_meta` on each access
    - Django Admin uses `model._meta.model_name` for URL generation → Backend may use base class name instead of actual class name
-   - **Solution**: 
+   - **Solution**:
      - Cache `_meta` classproperty after first creation to ensure Django Admin gets consistent object
      - Explicitly set `opts.model_name` and `opts.object_name` after `contribute_to_class` to ensure correct model name
      - Skip processing for base classes that start with `_` to avoid URL conflicts
@@ -580,34 +587,34 @@ class AssetTypeAdmin(DjangoNeoModelAdmin):
     def get_queryset(self, request):
         """Prefetch related data and cache it on admin instance."""
         asset_types = super().get_queryset(request)
-        
+
         # Collect identifiers for batch query
         asset_type_uris = [at.uri for at in asset_types]
-        
+
         # Execute batch query to prefetch relationships
         results, _ = db.cypher_query(
             GET_ASSET_TYPES_WITH_RELATIONSHIPS,
             {'asset_type_uris': asset_type_uris}
         )
-        
+
         # Build cache on admin instance (not on model instances)
         if not hasattr(self, '_prefetch_cache'):
             self._prefetch_cache = {}
-        
+
         # Store prefetched data in cache keyed by primary identifier
         for row in results:
             uri = row['uri']
             self._prefetch_cache[uri] = {
                 'point_role_uris': row.get('point_role_uris', [])
             }
-        
+
         # Also attach to instances if possible (for direct access)
         for at in asset_types:
             if at.uri in self._prefetch_cache:
                 at._prefetched_point_role_uris = self._prefetch_cache[at.uri]['point_role_uris']
-        
+
         return asset_types  # Return queryset, not list
-    
+
     def point_roles(self, obj):
         """Display method that uses cached prefetched data."""
         # First check if data is attached directly to instance
@@ -618,7 +625,7 @@ class AssetTypeAdmin(DjangoNeoModelAdmin):
             uris = self._prefetch_cache[obj.uri].get('point_role_uris', [])
         else:
             uris = []
-        
+
         # Filter out None values from OPTIONAL MATCH
         uris = [uri for uri in uris if uri is not None]
         return '   |   '.join(uris) if uris else '-'
@@ -851,8 +858,423 @@ When Django Admin tries to call these methods on a list, it fails with opaque "D
 
 **Rationale**: Adaptation logic belongs in base classes, making admin classes easy to read and maintain.
 
+## NeoModel-Specific Patterns and Best Practices
+
+This section documents patterns and learnings specific to NeoModel integration with Django, based on real-world implementation experience.
+
+### Pattern: UniqueIdProperty as Primary Key (MANDATORY)
+
+**MANDATORY**: When using UUIDs as primary keys for DjangoNeoModel models, use `UniqueIdProperty(primary_key=True)` and set `_pk_field_name = 'uuid'`.
+
+**Pattern**:
+- Define `uuid` as the first field in the model class
+- Use `UniqueIdProperty(primary_key=True)` - this automatically handles the `pk` property
+- Set `_pk_field_name: str = 'uuid'` as a class attribute
+- **DO NOT** define explicit `@property def pk(self)` methods - `primary_key=True` handles this automatically
+
+**Rationale**:
+- `UniqueIdProperty` automatically generates UUIDs and creates unique indexes
+- `primary_key=True` automatically provides the `pk` property that Django Admin expects
+- Explicit `pk` properties are redundant and should be removed
+
+**Example**:
+```python
+from neomodel.properties import UniqueIdProperty, StringProperty, Property
+from django_neomodel import DjangoNode as DjangoNeoModel
+
+class Causality(DjangoNeoModel):
+    _pk_field_name: str = 'uuid'  # Field name used for primary key queries
+
+    uuid: Property = UniqueIdProperty(
+        primary_key=True
+    )  # Primary unique identifier (UUID)
+
+    statement: Property = StringProperty(
+        unique=True,
+        required=True
+    )  # Causal statement
+
+    # ... other fields ...
+```
+
+**Anti-Pattern** (DO NOT USE):
+```python
+# ❌ WRONG: Explicit pk property is redundant
+class Causality(DjangoNeoModel):
+    uuid: Property = UniqueIdProperty(primary_key=True)
+
+    @property
+    def pk(self):
+        return self.uuid  # ❌ Not needed - primary_key=True handles this
+```
+
+### Pattern: Common Base Class for Created/Updated Timestamps (MANDATORY)
+
+**MANDATORY**: Factor out a common base class for models that have `created` and `updated` properties to avoid code duplication.
+
+**Pattern**:
+- Create `_DjangoNeoModelWithCreatedAndUpdatedProps` base class
+- Use `DateTimeProperty(default_now=True)` for both `created` and `updated` fields
+- Override `save()` method to automatically update `updated` timestamp on every save
+- Set `created` timestamp on first save (if not already set)
+
+**Rationale**:
+- Reduces code duplication across multiple models
+- Centralizes timestamp management logic
+- Ensures consistent timestamp behavior across all models
+
+**Example**:
+```python
+from datetime import datetime, UTC
+from django_neomodel import DjangoNode as DjangoNeoModel
+from neomodel.properties import Property, DateTimeProperty
+
+class _DjangoNeoModelWithCreatedAndUpdatedProps(DjangoNeoModel):
+    """Abstract base class for DjangoNeoModel models with automatic timestamp management."""
+    __abstract_node__: bool = True
+
+    # Audit timestamps
+    created: Property = DateTimeProperty(
+        default_now=True
+    )  # UTC timestamp of when this node was created
+    updated: Property = DateTimeProperty(
+        default_now=True
+    )  # UTC timestamp of when this node was last updated
+
+    def save(self, *args, **kwargs):
+        """Override save() to automatically update the 'updated' timestamp on every save."""
+        # Set created timestamp on first save (if not already set)
+        if not hasattr(self, 'id') or self.id is None:
+            if not hasattr(self, 'created') or self.created is None:
+                self.created = datetime.now(UTC)
+
+        # Update timestamp (always update 'updated' on save)
+        self.updated = datetime.now(UTC)
+
+        # Call parent save() to persist the node
+        return super().save(*args, **kwargs)
+
+# Usage in model classes
+class Causality(_DjangoNeoModelWithCreatedAndUpdatedProps):
+    uuid: Property = UniqueIdProperty(primary_key=True)
+    statement: Property = StringProperty(required=True)
+    # created and updated are inherited
+```
+
+### Pattern: Admin Configuration for UUID Fields (MANDATORY)
+
+**MANDATORY**: When DjangoNeoModel models use UUID fields as primary keys, exclude them from admin forms using `exclude = ('uuid',)`.
+
+**Pattern**:
+- Set `exclude: tuple[str, ...] = ('uuid',)` in the admin class
+- UUIDs are auto-generated and should not be manually edited
+- UUIDs are still accessible via `list_display` if needed for reference
+
+**Rationale**:
+- UUIDs are auto-generated and should not be manually edited
+- Hiding UUIDs from forms reduces user confusion
+- UUIDs can still be displayed in `list_display` for reference
+
+**Example**:
+```python
+@register(Causality)
+class CausalityAdmin(DjangoNeoModelAdmin):
+    list_display: tuple[str, ...] = ('statement', 'created', 'updated')
+    exclude: tuple[str, ...] = ('uuid',)  # Exclude uuid from admin forms
+```
+
+### Pattern: Batch Cypher Queries in Admin get_queryset (MANDATORY)
+
+**MANDATORY**: When Django Admin displays relationships, use batch Cypher queries in `get_queryset` to pre-fetch relationships and avoid N+1 query problems.
+
+**Pattern**:
+1. Override `get_queryset` to get the base NodeSet
+2. Extract identifiers (names, UUIDs) from the NodeSet
+3. Execute a single batch Cypher query to fetch all relationships
+4. Build an in-memory cache mapping identifiers to pre-fetched data
+5. Attach pre-fetched data to node instances or store in admin instance cache
+6. Return the original NodeSet to preserve pagination/filtering behavior
+
+**Rationale**:
+- Prevents N+1 query problems when Django Admin accesses relationships
+- Single batch query is more efficient than N individual queries
+- Admin instance cache ensures data persists even if Django Admin creates new node instances
+
+**Example**:
+```python
+from neomodel.sync_.database import db
+
+def get_queryset(self, request: HttpRequest) -> NodeSet:
+    """Return Agent NodeSet with pre-fetched relationships."""
+    agents: NodeSet = super().get_queryset(request=request)
+
+    # OPTIMIZATION: Pre-fetch relationships using batch Cypher query to avoid N+1
+    results, _ = db.cypher_query(
+        GET_AGENTS_WITH_RELATIONSHIPS,
+        {'agent_names': [agent.name for agent in agents]}
+    )
+
+    # Build cache: name -> pre-fetched data
+    prefetch_cache: dict[str, dict] = {}
+    for row in results:
+        name = row[0]  # agent_name
+        session_uuids_raw = row[3] if len(row) > 3 and row[3] is not None else []
+        session_uuids = [uuid for uuid in session_uuids_raw if uuid is not None] if session_uuids_raw else []
+        prefetch_cache[name] = {'session_uuids': session_uuids}
+
+    # Store prefetched data in admin instance cache
+    if not hasattr(self, '_prefetch_cache'):
+        self._prefetch_cache = {}
+    self._prefetch_cache.update(prefetch_cache)
+
+    # Attach pre-fetched data to node instances
+    for agent in agents:
+        cache = prefetch_cache.get(agent.name, {})
+        agent._prefetched_session_uuids = cache.get('session_uuids', [])
+
+    return agents
+```
+
+### Pattern: REST API Lookup Field Configuration (MANDATORY)
+
+**MANDATORY**: When using UUIDs or non-standard primary keys in REST API viewsets, set `lookup_field` and `lookup_url_kwarg` appropriately.
+
+**Pattern**:
+- Set `lookup_field = 'uuid'` (or the actual field name used for lookups)
+- Set `lookup_url_kwarg = 'pk'` (DRF default URL parameter name)
+- Use `Causality.nodes.get(uuid=pk)` in `retrieve` methods
+
+**Rationale**:
+- `lookup_field` tells DRF which model field to use for lookups
+- `lookup_url_kwarg` tells DRF the URL parameter name (defaults to `'pk'`)
+- Ensures consistent lookup behavior across list and detail views
+
+**Example**:
+```python
+from rest_framework import viewsets, status
+from rest_framework.request import Request
+from rest_framework.response import Response
+
+class CausalityViewSet(viewsets.ViewSet):
+    lookup_field = 'uuid'  # Use uuid as primary key for lookups
+    lookup_url_kwarg = 'pk'  # URL parameter name (DRF default)
+
+    def retrieve(self, request: Request, pk: Optional[str] = None) -> Response:
+        try:
+            causality = Causality.nodes.get(uuid=pk)
+        except Causality.DoesNotExist:
+            return Response(
+                {'detail': f'Causality with UUID "{pk}" not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        # ... serialize and return ...
+```
+
+### Pattern: Direct NeoModel Node Access for Simple Models (MANDATORY)
+
+**MANDATORY**: For DjangoNeoModel models without relationships, use direct NeoModel node access (`Model.nodes.all()`, `Model.nodes.get(uuid=pk)`) in REST API views instead of Cypher queries.
+
+**Pattern**:
+- Use `Causality.nodes.all()` for list views
+- Use `Causality.nodes.get(uuid=pk)` for detail views
+- Access properties directly from NeoModel nodes using `getattr(node, 'property_name', None)`
+- Build serialized data dictionaries from node properties
+
+**Rationale**:
+- Simpler code for models without relationships
+- NeoModel handles property access correctly (including UUIDs and timestamps)
+- No need for complex Cypher queries when relationships aren't involved
+
+**Example**:
+```python
+def list(self, request: Request) -> Response:
+    """List all Causalities."""
+    try:
+        causalities = Causality.nodes.all()
+    except Exception as e:
+        return Response({'detail': f'Database error: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    if not causalities:
+        return Response([], status=status.HTTP_200_OK)
+
+    # Build serialized data from NeoModel nodes
+    serialized_data: list[SerializedCausality] = []
+    for causality in causalities:
+        item_data: SerializedCausality = {
+            'causality_uuid': getattr(causality, 'uuid', None),
+            'causality_statement': getattr(causality, 'statement', None),
+            'causality_created': getattr(causality, 'created', None),
+            'causality_updated': getattr(causality, 'updated', None),
+        }
+        serialized_data.append(item_data)
+
+    serializer = CausalitySerializer(serialized_data, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+```
+
+### Pattern: Batch Cypher Queries for Models with Relationships (MANDATORY)
+
+**MANDATORY**: For DjangoNeoModel models with relationships, use batch Cypher queries in REST API views to pre-fetch relationships and avoid N+1 query problems.
+
+**Pattern**:
+1. Get base NodeSet using `DjangoQueryGraph` or `Model.nodes.all()`
+2. Extract identifiers (names, UUIDs) from the NodeSet
+3. Execute a single batch Cypher query to fetch all relationships
+4. Build serialized data dictionaries from query results
+5. Conditionally include relationships based on query parameters
+
+**Rationale**:
+- Prevents N+1 query problems when serializing relationships
+- Single batch query is more efficient than N individual queries
+- Conditional relationship inclusion reduces response size when relationships aren't needed
+
+### Pattern: URL Routing with Negative Lookaheads (MANDATORY)
+
+**MANDATORY**: When URL patterns conflict (e.g., agent detail view matching problem-solving-sessions list view), use negative lookaheads in regex patterns to disambiguate.
+
+**Pattern**:
+- Place router URLs (`*api_router.urls`) **before** custom detail view URLs
+- Use negative lookahead `(?!problem-solving-sessions/)` in regex patterns to exclude conflicting paths
+- Order custom detail views from most specific to least specific
+
+**Rationale**:
+- Router URLs handle list views and format suffixes
+- Custom detail views need to exclude list view paths to prevent conflicts
+- Negative lookaheads provide precise pattern matching without affecting other routes
+
+**Example**:
+```python
+from django.urls import re_path
+from rest_framework.routers import DefaultRouter
+
+api_router = DefaultRouter()
+api_router.register(r'api/agents', AgentViewSet, basename='agent')
+api_router.register(r'api/agents/problem-solving-sessions', ProblemSolvingSessionViewSet, basename='problem-solving-session')
+
+urlpatterns = [
+    # Include router URLs first (list views must come before detail views)
+    *api_router.urls,
+
+    # Custom detail view URLs that allow special characters in lookup fields
+    # Problem-solving-sessions detail view (must come before agent detail view)
+    re_path(r'^api/agents/problem-solving-sessions/(?P<pk>[^/]+)/$', ProblemSolvingSessionViewSet.as_view({'get': 'retrieve'}), name='problem-solving-session-detail'),
+    # Agent detail view (excludes 'problem-solving-sessions' path using negative lookahead)
+    re_path(r'^api/agents/(?!problem-solving-sessions/)(?P<pk>[^/]+)/$', AgentViewSet.as_view({'get': 'retrieve'}), name='agent-detail'),
+]
+```
+
+### Pattern: Simple Serializer Classes for TypedDict-Based Serialization (MANDATORY)
+
+**MANDATORY**: Use simple `Serializer` classes (not `ModelSerializer`) for TypedDict-based serialization in REST APIs.
+
+**Pattern**:
+- Use `serializers.Serializer` (not `ModelSerializer`)
+- Field names must match TypedDict keys exactly
+- Use appropriate field types (`CharField`, `DateTimeField`, `ListField`, etc.)
+- Mark optional fields with `allow_null=True, required=False`
+
+**Rationale**:
+- TypedDict-based serialization doesn't map to Django models
+- Simple `Serializer` classes provide explicit control over field definitions
+- Field names matching TypedDict keys ensure consistency
+
+**Example**:
+```python
+from rest_framework import serializers
+
+class CausalitySerializer(serializers.Serializer):
+    """Serializer for Causality."""
+    causality_uuid = serializers.CharField()
+    causality_statement = serializers.CharField()
+    causality_created = serializers.DateTimeField()
+    causality_updated = serializers.DateTimeField()
+
+class AgentSerializer(serializers.Serializer):
+    """Serializer for Agent with relationships."""
+    agent_name = serializers.CharField()
+    agent_created = serializers.DateTimeField()
+    agent_updated = serializers.DateTimeField()
+    agent_problem_solving_session_uuids = serializers.ListField(
+        child=serializers.CharField(),
+        allow_empty=True
+    )
+```
+
+### Pattern: Read-only Fields in Change Forms (MANDATORY)
+
+**MANDATORY**: Use dynamic `get_readonly_fields` method to make all fields read-only in change forms for existing objects, while allowing them to be editable for new object creation.
+
+**Pattern**:
+- Override `get_readonly_fields` to dynamically determine all property fields of the NeoModel class
+- Return all property fields as read-only for existing objects (`obj` exists)
+- Return default `readonly_fields` for new object creation (`obj` is None)
+
+**Rationale**:
+- NeoModel nodes are typically created programmatically, not through Django Admin forms
+- Making all fields read-only in change forms prevents accidental modifications
+- New object creation may still need editable fields (though typically not used)
+
+**Example**:
+```python
+from django.contrib.admin import register
+from django.http import HttpRequest
+from neomodel.properties import Property
+
+@register(Causality)
+class CausalityAdmin(DjangoNeoModelAdmin):
+    list_display: tuple[str, ...] = ('statement', 'created', 'updated')
+    exclude: tuple[str, ...] = ('uuid',)
+
+    def get_readonly_fields(self, request: HttpRequest, obj=None) -> tuple[str, ...]:
+        """Make all fields read-only in change form (not in add form)."""
+        if obj:  # Change form (obj exists)
+            readonly = []
+            for attr_name in dir(self.model):
+                if not attr_name.startswith('_'):
+                    attr = getattr(self.model, attr_name, None)
+                    if isinstance(attr, Property):
+                        readonly.append(attr_name)
+            return tuple(readonly)
+        return self.readonly_fields  # Add form - use default readonly_fields
+```
+
+### Pattern: Admin Display Decorator with Explicit Arguments (MANDATORY)
+
+**MANDATORY**: Use the `@admin.display` decorator with explicit arguments for custom display methods in admin classes.
+
+**Pattern**:
+- Use `@admin.display(boolean=None, ordering=None, description=..., empty_value=None)` decorator
+- Make decorator calls multi-line for ease of reading
+- Explicitly set all arguments even if using defaults
+
+**Rationale**:
+- Makes it clear what display options are available
+- Easier to modify display behavior in the future
+- Consistent formatting across all admin classes
+
+**Example**:
+```python
+from django.contrib.admin import display, register
+
+@register(Agent)
+class AgentAdmin(DjangoNeoModelAdmin):
+    list_display: tuple[str, ...] = ('name', 'problem_solving_sessions', 'created', 'updated')
+
+    @display(
+        boolean=None,
+        ordering=None,
+        description='Problem-Solving Sessions',
+        empty_value=None
+    )
+    def problem_solving_sessions(self, obj: Agent) -> str:
+        # ... display logic ...
+        return '   |   '.join(uuids[:5])
+```
+
 ## References
 
 - [Django Admin Customization](https://docs.djangoproject.com/en/stable/ref/contrib/admin/)
 - [Django Model Meta Options](https://docs.djangoproject.com/en/stable/ref/models/options/)
 - [Django QuerySet API](https://docs.djangoproject.com/en/stable/ref/models/querysets/)
+- [NeoModel Documentation](https://neomodel.readthedocs.io/)
+- [Django REST Framework](https://www.django-rest-framework.org/)
