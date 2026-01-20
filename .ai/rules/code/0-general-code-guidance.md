@@ -19,7 +19,7 @@ alwaysApply: true
   3. **Utilities (helpers and properties)** - Low-level, reusable helpers (format conversions, transformations, etc.) and internal/lazy properties
   4. **Domain Helpers** - Domain-specific business logic helpers (in dependency order)
 - Properties follow the same grouping principle as methods: public properties belong with Public API; internal/utility properties belong with utilities.
-- Use section headers/banners where helpful to delineate groups; customize headings to the class/module. Example (illustrative only):
+- **MANDATORY**: Use section headers/banners with separator lines to clearly delineate groups. The standard pattern uses `# ============================================================================` style separators:
   ```
   # ============================================================================
   # Initialization
@@ -37,6 +37,12 @@ alwaysApply: true
   # Domain Helpers
   # ============================================================================
   ```
+- **Rationale for Section Headers**: Section headers provide clear visual separation, making it easy to navigate large classes and understand method organization at a glance.
+- **Benefits**: 
+  - **Discoverability**: Public API is immediately visible
+  - **Navigation**: Easy to jump to relevant sections
+  - **Maintainability**: Clear organization makes code easier to modify
+  - **Consistency**: Predictable structure across all classes
 - Within each section, methods follow "Dependencies Before Dependents": dependencies (methods used by others) appear before dependents (methods that use them).
 
 ### Principle: Public API Visibility

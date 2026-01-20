@@ -553,6 +553,7 @@ import argparse
 ### Import Grouping Rules
 - **Group by source**: Standard library, third-party, internal
 - **Separate groups**: Use blank lines between groups (one blank line is sufficient)
+- **Group comments**: **RECOMMENDED** - Add comments identifying each import group for clarity (e.g., `# Standard library imports (alphabetical)`, `# Third-party imports (alphabetical)`, `# Internal imports (alphabetical)`)
 - **Within groups**: **MANDATORY** - Alphabetical ordering (unless explicitly instructed/overridden otherwise)
 - **Relative vs absolute**: Use absolute imports for cross-package imports, relative imports for same-package modules. **Within internal imports group**: Absolute imports come first, then relative imports (both alphabetically ordered within their respective subgroups)
 - **Organize large import lists**: For large import lists (e.g., many query constants), use comments to group related imports for readability
@@ -570,6 +571,35 @@ import argparse
         GET_ASSET_TYPE,
     )
     ```
+
+**Example with Group Comments:**
+```python
+from __future__ import annotations
+
+# Standard library imports (alphabetical)
+from dataclasses import asdict, dataclass
+import inspect
+import json
+import os
+from pathlib import Path
+from typing import Any, Literal, LiteralString
+from uuid import UUID
+
+# Third-party imports (alphabetical)
+from dana.core.agent.star_agent import STARAgent
+
+# Internal imports (alphabetical)
+from ORION.ontology.physical._django.models import AssetName, PointName, SpatialElementName
+from ORION.util.llm import DEFAULT_LLM_PROVIDER, DEFAULT_LLM, DEFAULT_MAX_CONTEXT_TOKENS
+
+from .._django import Agent as AgentInDb, ProblemSolvingSession
+```
+
+**Benefits of Group Comments:**
+- **Clarity**: Comments make import groups immediately obvious
+- **Maintainability**: Easy to see which imports belong to which category
+- **Code Review**: Reviewers can quickly verify import organization compliance
+- **Self-Documentation**: Code explains its own organization
 
 ## Progress Tracking
 
