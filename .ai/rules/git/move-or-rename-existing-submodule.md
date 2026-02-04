@@ -221,6 +221,62 @@ The `worktree` path is relative from `.git/modules/<path>/config` to the actual 
 - From repo root to `.submodules/AISE/Honeywell/Vulcan/`: `.submodules/AISE/Honeywell/Vulcan/`
 - Combined: `../../../../.submodules/AISE/Honeywell/Vulcan`
 
+## When You Pull a Commit That Renames a Submodule (Recipient Workflow)
+
+If someone else renamed the submodule and you **pull** that commit, your repo gets updated `.gitmodules` and index (old path removed, new path added), but your working tree is left in a mixed state. Follow this cleanup.
+
+### What you may see after pull
+
+- **Warning:** `warning: unable to rmdir '.submodules/.../Anaconda': Directory not empty` — Git could not remove the old path because the directory still exists and is not empty.
+- **On disk:** The old submodule directory (e.g. `.submodules/AISE/Honeywell/Anaconda`) is still present with full contents; the new path (e.g. `.submodules/AISE/Honeywell/Vulcan`) may exist as an empty or placeholder directory.
+- **`git submodule status`:** The new submodule shows with a `-` prefix (not initialized). The old path no longer appears in the list.
+- **`.git/config`:** Still contains the old `[submodule "AISE/Honeywell/Anaconda"]` block. Pull does **not** remove it; only `.gitmodules` and the index are updated.
+
+### Steps after pulling a submodule rename
+
+1. **Check for uncommitted work in the old submodule** (do this before removing anything):
+   ```bash
+   cd .submodules/AISE/Honeywell/Anaconda
+   git status
+   git branch -v
+   ```
+   If there are uncommitted changes or you're not on the branch you expect, **preserve that work** before cleanup:
+   - **Option A — stash:** `git stash -u` (then you can later `cd` into the new Vulcan clone and `git stash pop` if the history matches).
+   - **Option B — backup the directory:** From the parent repo, move the whole directory to a safe name so you can copy files or reattach later, e.g. `mv .submodules/AISE/Honeywell/Anaconda .submodules/AISE/Honeywell/Anaconda-backup-$(date +%Y%m%d)`. Then skip deleting that path in step 4 (only remove the one you didn't back up, or leave the backup in place and remove only `.git/modules/.../Anaconda` and the config entry so the backup is a plain folder).
+   - **Option C — commit in the submodule:** If the submodule still has a remote, commit (and optionally push) from inside the old Anaconda dir so the work exists in the remote; then you can pull it into the new Vulcan clone if it's the same repo/URL.
+   Only after you've either confirmed there is no important uncommitted work or you've preserved it, proceed with the steps below.
+
+2. **Initialize and update the new submodule** (clone and checkout at the new path):
+   ```bash
+   git submodule update --init .submodules/AISE/Honeywell/Vulcan
+   ```
+
+3. **Remove the old submodule working directory** (only if you did not back it up in step 1):
+   ```bash
+   rm -rf .submodules/AISE/Honeywell/Anaconda
+   ```
+
+4. **Remove the old submodule’s Git metadata:**
+   ```bash
+   rm -rf .git/modules/AISE/Honeywell/Anaconda
+   ```
+
+5. **Remove the stale submodule entry from local config**
+   Edit `.git/config` and delete the `[submodule "AISE/Honeywell/Anaconda"]` block (the three lines: section header, `active = true`, and `url = ...`).
+
+6. **Verify:**
+   ```bash
+   git submodule status
+   ls .submodules/AISE/Honeywell/
+   ```
+   You should see the new submodule (e.g. Vulcan) with a space prefix (initialized) and no Anaconda directory.
+
+### Optional: align config with .gitmodules
+
+Running `git submodule sync` after pull updates `.git/config` from `.gitmodules`. It will not re-add the old Anaconda entry (since it’s gone from `.gitmodules`). If you already removed the Anaconda block and initialized Vulcan, sync is optional.
+
+---
+
 ## Important Notes
 
 - **Always preserve uncommitted work:** This process moves directories, so all uncommitted changes are preserved
