@@ -214,6 +214,10 @@ Assuming the submodule is currently at `.submodules/AISE/Honeywell/Anaconda` and
 - Verify the `worktree` path in `.git/modules/<new-path>/config` is correct
 - The worktree should point to the actual submodule directory location
 
+### Ignored untracked files missing after submodule rename (recipient workflow)
+
+If you already ran the recipient workflow and **ignored** untracked files (e.g. `* [Otter AI].txt` in `.gitignore`) are missing from the new submodule, the save step was either skipped or used `git ls-files --others --exclude-standard`, which excludes ignored files. **There is no in-process recovery:** once the old submodule directory is removed, those files are permanently lost unless you have an external backup (e.g. cloud sync or version history) and restore the old directory from it, then re-run the save (with `git ls-files --others` only) and restore. **This document's workflow prevents loss by requiring save-first with `git ls-files --others` only; do not skip or alter that step.**
+
 ### Path calculation for worktree
 
 The `worktree` path is relative from `.git/modules/<path>/config` to the actual submodule directory. Count directory levels:
@@ -225,6 +229,8 @@ The `worktree` path is relative from `.git/modules/<path>/config` to the actual 
 
 If someone else renamed the submodule and you **pull** that commit, your repo gets updated `.gitmodules` and index (old path removed, new path added), but your working tree is left in a mixed state. Follow this cleanup.
 
+**Do not remove the old submodule directory until you have saved all untracked files (including ignored) and verified the backup.** Otherwise those files are permanently lost; this process does not rely on external recovery.
+
 ### What you may see after pull
 
 - **Warning:** `warning: unable to rmdir '.submodules/.../Anaconda': Directory not empty` — Git could not remove the old path because the directory still exists and is not empty.
@@ -232,9 +238,12 @@ If someone else renamed the submodule and you **pull** that commit, your repo ge
 - **`git submodule status`:** The new submodule shows with a `-` prefix (not initialized). The old path no longer appears in the list.
 - **`.git/config`:** Still contains the old `[submodule "AISE/Honeywell/Anaconda"]` block. Pull does **not** remove it; only `.gitmodules` and the index are updated.
 
-### Preserving untracked files without committing (recommended)
+### Preserving untracked files (required — do not skip)
 
-If you have **untracked files** in the old submodule and you do **not** want to commit them, save them to a backup archive in the parent repo, then restore into the renamed submodule after init. The backup lives under the parent repo’s `.git/` (or a temp dir) and is never committed.
+**You must save all untracked files before removing the old submodule directory.** There is no in-process recovery: once you delete the old directory, any unsaved files are permanently lost. This process does **not** rely on Dropbox or any other external backup.
+
+- Save to a backup archive in the parent repo (e.g. under `.git/`), then restore into the renamed submodule after init. The backup is never committed.
+- **Use `git ls-files --others` only — do NOT add `--exclude-standard`.** If you use `--exclude-standard`, files matched by `.gitignore` (e.g. personal notes, `* [Otter AI].txt` transcripts) are excluded from the backup and will be **permanently lost** when you remove the old submodule directory.
 
 **Variables** (set once at parent repo root; use your actual old/new submodule paths):
 
@@ -250,12 +259,11 @@ BACKUP_LIST=".git/backup-${BACKUP_SLUG}-untracked-list.txt"
 UP_TO_ROOT="$(echo "$OLD_SUBMODULE" | sed 's|[^/]*|..|g')/"
 ```
 
-**Save untracked files** (run from parent repo root, before removing the old submodule):
-
-Use `git ls-files --others` **without** `--exclude-standard` so that untracked files that are ignored (e.g. by `.gitignore`) are also saved—e.g. personal notes or transcripts like `* [Otter AI].txt` that you do not commit but want preserved.
+**Save untracked files** (run from parent repo root, **before** removing the old submodule):
 
 ```bash
 cd "$OLD_SUBMODULE"
+# Do NOT use --exclude-standard: that would exclude .gitignore-matched files and they would be lost.
 git ls-files --others > "${UP_TO_ROOT}${BACKUP_LIST}.tmp"
 mv "${UP_TO_ROOT}${BACKUP_LIST}.tmp" "${UP_TO_ROOT}${BACKUP_LIST}"
 if [ -s "${UP_TO_ROOT}${BACKUP_LIST}" ]; then
@@ -265,6 +273,8 @@ else
 fi
 cd "$UP_TO_ROOT"
 ```
+
+**Verify backup before proceeding:** Ensure `$BACKUP_TAR` and `$BACKUP_LIST` exist (e.g. `ls -la "$BACKUP_TAR" "$BACKUP_LIST"`). Optionally `wc -l "$BACKUP_LIST"` to see how many untracked paths were saved. **Do not remove the old submodule directory until this is done.**
 
 Paths in the list and tarball are relative to the old submodule root, so they restore correctly under the new submodule root. If there are no untracked files, the tarball is empty and the list is empty; restore is a no-op.
 
@@ -283,8 +293,10 @@ cd "$UP_TO_ROOT"
 
 ### Steps after pulling a submodule rename
 
-1. **Save untracked files (no commit)**
-   Run the "Save untracked files" block from "Preserving untracked files without committing" above (set variables, then run the block). This writes a tarball and list under `.git/` (or your chosen location).
+**CRITICAL — save first, remove later:** Do **not** remove the old submodule directory (step 4) until you have run step 1 and verified the backup tarball and list exist. If you remove the old directory first, ignored untracked files (e.g. in `.gitignore`) will be **permanently lost**. This process does not rely on Dropbox or other recovery.
+
+1. **Save untracked files (required — do not skip)**
+   Set the variables above, then run the "Save untracked files" block from "Preserving untracked files" above. Verify that `$BACKUP_TAR` and `$BACKUP_LIST` exist before continuing. Only then proceed to step 2.
 
 2. **(Optional) Preserve uncommitted *tracked* work**
    If you have unstaged or uncommitted changes to *tracked* files:
@@ -319,7 +331,7 @@ cd "$UP_TO_ROOT"
    Edit `.git/config` and delete the `[submodule "<old-submodule-key>"]` block (the three lines: section header, `active = true`, and `url = ...`). The key is the same as in `.gitmodules` (e.g. `AISE/Honeywell/Anaconda` or `vendor/foo`).
 
 7. **Restore untracked files into the renamed submodule**
-   Run the "Restore untracked files" block from "Preserving untracked files without committing" (same variables). This extracts the saved tarball into `$NEW_SUBMODULE`.
+   Run the "Restore untracked files" block from "Preserving untracked files" above (same variables). This extracts the saved tarball into `$NEW_SUBMODULE`.
 
 8. **Update symlink if you use one**
    If you had a symlink pointing at the old path, remove it and create one for the new path (adjust link path and target to your layout):
@@ -335,7 +347,7 @@ cd "$UP_TO_ROOT"
    cd "$NEW_SUBMODULE"
    git status
    ```
-   You should see the new submodule initialized and, if you restored, the former untracked files listed as untracked again.
+   You should see the new submodule initialized and, if you restored, the former untracked files (including ignored ones) listed as untracked again.
 
 ### Optional: align config with .gitmodules
 
@@ -345,7 +357,8 @@ Running `git submodule sync` after pull updates `.git/config` from `.gitmodules`
 
 ## Important Notes
 
-- **Always preserve uncommitted work:** This process moves directories, so all uncommitted changes are preserved
+- **Recipient workflow — save-first is mandatory:** Do **not** remove the old submodule directory until you have run "Save untracked files" and verified the backup tarball and list exist. Use `git ls-files --others` only (never `--exclude-standard`). There is no in-process recovery for files lost by removing the old directory before saving; this process does not rely on Dropbox or any other external backup.
+- **Always preserve uncommitted work:** This process moves directories, so all uncommitted changes are preserved when you follow it.
 - **Relative paths matter:** The `.git` file and `worktree` paths use relative paths - ensure they're calculated correctly
 - **Case sensitivity:** On case-insensitive filesystems (Windows, Mac default), be careful with case-only renames
 - **Commit the changes:** After moving, commit the updated `.gitmodules` file to make the change permanent
