@@ -232,48 +232,114 @@ If someone else renamed the submodule and you **pull** that commit, your repo ge
 - **`git submodule status`:** The new submodule shows with a `-` prefix (not initialized). The old path no longer appears in the list.
 - **`.git/config`:** Still contains the old `[submodule "AISE/Honeywell/Anaconda"]` block. Pull does **not** remove it; only `.gitmodules` and the index are updated.
 
+### Preserving untracked files without committing (recommended)
+
+If you have **untracked files** in the old submodule and you do **not** want to commit them, save them to a backup archive in the parent repo, then restore into the renamed submodule after init. The backup lives under the parent repo’s `.git/` (or a temp dir) and is never committed.
+
+**Variables** (set once at parent repo root; use your actual old/new submodule paths):
+
+```bash
+# From parent repo root
+OLD_SUBMODULE="<old-path>"   # e.g. .submodules/AISE/Honeywell/Anaconda or vendor/foo
+NEW_SUBMODULE="<new-path>"   # e.g. .submodules/AISE/Honeywell/Vulcan or vendor/bar
+BACKUP_SLUG="<slug>"         # safe identifier for backup files, e.g. AISE-Honeywell-Anaconda
+BACKUP_TAR=".git/backup-${BACKUP_SLUG}-untracked.tar"
+BACKUP_LIST=".git/backup-${BACKUP_SLUG}-untracked-list.txt"
+# UP_TO_ROOT = path from inside the submodule dir back to parent repo root (one "../" per path segment in OLD_SUBMODULE)
+# Set manually (e.g. "a/b/c" -> "../../../") or derive from OLD_SUBMODULE:
+UP_TO_ROOT="$(echo "$OLD_SUBMODULE" | sed 's|[^/]*|..|g')/"
+```
+
+**Save untracked files** (run from parent repo root, before removing the old submodule):
+
+Use `git ls-files --others` **without** `--exclude-standard` so that untracked files that are ignored (e.g. by `.gitignore`) are also saved—e.g. personal notes or transcripts like `* [Otter AI].txt` that you do not commit but want preserved.
+
+```bash
+cd "$OLD_SUBMODULE"
+git ls-files --others > "${UP_TO_ROOT}${BACKUP_LIST}.tmp"
+mv "${UP_TO_ROOT}${BACKUP_LIST}.tmp" "${UP_TO_ROOT}${BACKUP_LIST}"
+if [ -s "${UP_TO_ROOT}${BACKUP_LIST}" ]; then
+  tar -cf "${UP_TO_ROOT}${BACKUP_TAR}" -T "${UP_TO_ROOT}${BACKUP_LIST}"
+else
+  touch "${UP_TO_ROOT}${BACKUP_TAR}"
+fi
+cd "$UP_TO_ROOT"
+```
+
+Paths in the list and tarball are relative to the old submodule root, so they restore correctly under the new submodule root. If there are no untracked files, the tarball is empty and the list is empty; restore is a no-op.
+
+**Restore untracked files** (run from parent repo root, after the new submodule is initialized and the old directory removed):
+
+```bash
+cd "$NEW_SUBMODULE"
+if [ -s "${UP_TO_ROOT}${BACKUP_LIST}" ]; then
+  tar -xf "${UP_TO_ROOT}${BACKUP_TAR}"
+fi
+cd "$UP_TO_ROOT"
+```
+
+**Optional:** After verifying the new submodule, remove the backup:
+`rm -f "$BACKUP_TAR" "$BACKUP_LIST"`
+
 ### Steps after pulling a submodule rename
 
-1. **Check for uncommitted work in the old submodule** (do this before removing anything):
+1. **Save untracked files (no commit)**
+   Run the "Save untracked files" block from "Preserving untracked files without committing" above (set variables, then run the block). This writes a tarball and list under `.git/` (or your chosen location).
+
+2. **(Optional) Preserve uncommitted *tracked* work**
+   If you have unstaged or uncommitted changes to *tracked* files:
    ```bash
-   cd .submodules/AISE/Honeywell/Anaconda
+   cd "$OLD_SUBMODULE"
    git status
    git branch -v
    ```
-   If there are uncommitted changes or you're not on the branch you expect, **preserve that work** before cleanup:
-   - **Option A — stash:** `git stash -u` (then you can later `cd` into the new Vulcan clone and `git stash pop` if the history matches).
-   - **Option B — backup the directory:** From the parent repo, move the whole directory to a safe name so you can copy files or reattach later, e.g. `mv .submodules/AISE/Honeywell/Anaconda .submodules/AISE/Honeywell/Anaconda-backup-$(date +%Y%m%d)`. Then skip deleting that path in step 4 (only remove the one you didn't back up, or leave the backup in place and remove only `.git/modules/.../Anaconda` and the config entry so the backup is a plain folder).
-   - **Option C — commit in the submodule:** If the submodule still has a remote, commit (and optionally push) from inside the old Anaconda dir so the work exists in the remote; then you can pull it into the new Vulcan clone if it's the same repo/URL.
-   Only after you've either confirmed there is no important uncommitted work or you've preserved it, proceed with the steps below.
+   - **Option A — stash:** `git stash -u` (later, after init, `cd` into the new submodule and `git stash pop` only if the same commit is checked out; otherwise the stash is lost when you remove the old `.git/modules/...`).
+   - **Option B — full directory backup:** From parent repo: `mv "$OLD_SUBMODULE" "${OLD_SUBMODULE}-backup-$(date +%Y%m%d)"`. Then init the new submodule, and copy any files you need from the backup into the new path before deleting the backup.
+   - **Option C — commit in the submodule:** Commit (and push) from inside the old submodule dir so the work is on the remote; then pull it in the new clone.
+   If you have no important uncommitted tracked work, skip this step.
 
-2. **Initialize and update the new submodule** (clone and checkout at the new path):
+3. **Initialize and update the new submodule** (clone and checkout at the new path):
    ```bash
-   git submodule update --init .submodules/AISE/Honeywell/Vulcan
+   git submodule update --init "$NEW_SUBMODULE"
    ```
 
-3. **Remove the old submodule working directory** (only if you did not back it up in step 1):
+4. **Remove the old submodule working directory** (only if you did not keep a full backup in step 2):
    ```bash
-   rm -rf .submodules/AISE/Honeywell/Anaconda
+   rm -rf "$OLD_SUBMODULE"
    ```
 
-4. **Remove the old submodule’s Git metadata:**
+5. **Remove the old submodule's Git metadata:**
+   The path under `.git/modules/` matches the submodule **key** from `.gitmodules` (e.g. `AISE/Honeywell/Anaconda`), not necessarily the filesystem path. Remove that directory:
    ```bash
-   rm -rf .git/modules/AISE/Honeywell/Anaconda
+   rm -rf .git/modules/<old-submodule-key>
+   ```
+   Example: if your old entry was `[submodule "AISE/Honeywell/Anaconda"]`, run `rm -rf .git/modules/AISE/Honeywell/Anaconda`. For a flat path like `[submodule "vendor/foo"]`, run `rm -rf .git/modules/vendor/foo`.
+
+6. **Remove the stale submodule entry from local config**
+   Edit `.git/config` and delete the `[submodule "<old-submodule-key>"]` block (the three lines: section header, `active = true`, and `url = ...`). The key is the same as in `.gitmodules` (e.g. `AISE/Honeywell/Anaconda` or `vendor/foo`).
+
+7. **Restore untracked files into the renamed submodule**
+   Run the "Restore untracked files" block from "Preserving untracked files without committing" (same variables). This extracts the saved tarball into `$NEW_SUBMODULE`.
+
+8. **Update symlink if you use one**
+   If you had a symlink pointing at the old path, remove it and create one for the new path (adjust link path and target to your layout):
+   ```bash
+   rm -f <path-to-old-symlink>
+   ln -s <relative-path-to-new-submodule> <path-to-new-symlink>
    ```
 
-5. **Remove the stale submodule entry from local config**
-   Edit `.git/config` and delete the `[submodule "AISE/Honeywell/Anaconda"]` block (the three lines: section header, `active = true`, and `url = ...`).
-
-6. **Verify:**
+9. **Verify:**
    ```bash
    git submodule status
-   ls .submodules/AISE/Honeywell/
+   ls "$(dirname "$NEW_SUBMODULE")"
+   cd "$NEW_SUBMODULE"
+   git status
    ```
-   You should see the new submodule (e.g. Vulcan) with a space prefix (initialized) and no Anaconda directory.
+   You should see the new submodule initialized and, if you restored, the former untracked files listed as untracked again.
 
 ### Optional: align config with .gitmodules
 
-Running `git submodule sync` after pull updates `.git/config` from `.gitmodules`. It will not re-add the old Anaconda entry (since it’s gone from `.gitmodules`). If you already removed the Anaconda block and initialized Vulcan, sync is optional.
+Running `git submodule sync` after pull updates `.git/config` from `.gitmodules`. It will not re-add the old submodule entry (since it's gone from `.gitmodules`). If you already removed the old block and initialized the new submodule, sync is optional.
 
 ---
 
