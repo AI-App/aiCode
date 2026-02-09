@@ -1,6 +1,5 @@
-PYTHON & related
-================
-
+# PYTHON & related
+# ================
 __pycache__/
 *.pyc
 dist/
@@ -9,7 +8,12 @@ uv.lock
 .venv/
 
 
-GITHUB & VISUAL STUDIO CODE
-===========================
+# ENVIRONMENT VARIABLES
+# =====================
+.env
 
-# .github/instructions/codacy.instructions.md
+
+# MISC / OTHER
+# ============
+.DS_Store
+Thumbs.db
