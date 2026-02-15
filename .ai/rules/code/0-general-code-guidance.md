@@ -144,6 +144,86 @@ alwaysApply: true
 - This clearly distinguishes internal implementation details from public-facing surfaces.
 - Public API methods should not have leading underscores.
 
+### Principle: No Abbreviations in Local Variable Names (CLARITY OVER BREVITY)
+- **MANDATORY**: Do not abbreviate local variable names. Use full, descriptive names that make the code self-documenting.
+- **Apply everywhere**: Local variables, loop variables, comprehension variables, and intermediate computation variables.
+- **Rationale**: In a large codebase, abbreviated variable names force readers to mentally decode abbreviations, increasing cognitive load and the risk of misunderstanding. Full names make the code immediately clear.
+- **Benefits**: Self-documenting code, easier code reviews, lower onboarding cost for new team members
+- **Examples of bad abbreviations → good replacements**:
+  - `se` → `spatial_element` (domain object)
+  - `ns` → `namespace_label` (extracted value)
+  - `lbl` → `label` (loop variable)
+  - `cn` → `container_name` (loop variable)
+  - `desc` is acceptable (universally understood abbreviation for description)
+- **Example of good practice**:
+  ```python
+  # CORRECT: Full, descriptive names
+  for spatial_element_name in spatial_element_names:
+      spatial_element = SpatialElement.nodes.get_or_none(name=spatial_element_name)
+      if spatial_element:
+          rel_manager.connect(spatial_element)
+
+  clean_labels: list[SchemaNamespaceLabel] = [label.strip() for label in labels if label and label.strip()]
+  ```
+- **Example of bad practice** (DO NOT USE):
+  ```python
+  # WRONG: Abbreviated names force readers to decode
+  for se_name in spatial_element_names:
+      se = SpatialElement.nodes.get_or_none(name=se_name)
+      if se:
+          rel_manager.connect(se)
+
+  cleaned = [lbl.strip() for lbl in labels if lbl and lbl.strip()]
+  ```
+
+### Principle: Domain-Typed Variable Names Over Generic Names
+- **MANDATORY**: Local variables holding domain-typed results must be named after their domain type, not given generic names like `result`, `data`, `output`, or `items`.
+- **Pattern**: Name the variable after what it contains — e.g., `schema_namespaces`, `asset_types`, `points_by_asset` — so readers immediately know both the type and the semantic role.
+- **Apply to**: Return values from database queries, API calls, batch operations, and any variable holding a collection of domain objects.
+- **Rationale**: Generic names like `result` provide zero information about what the variable holds, forcing readers to trace back to the assignment to understand the code.
+- **When generic names are acceptable**:
+  - Raw database query results from Cypher/SQL destructuring: `result, _ = db.cypher_query(...)` (standard destructuring pattern)
+  - Docstrings and comments using natural English: "the result for a single asset type"
+- **Example of good practice**:
+  ```python
+  # CORRECT: Domain-typed names - immediately clear what they hold
+  schema_namespaces: list[SchemaNamespace] = SchemaNamespace.get_or_create(...)
+  asset_types: list[AssetType] = list(AssetType.nodes.filter(uri__in=[...]))
+  points_by_asset: dict[AssetName, ReturnedPoints] = {}
+  point_roles_by_point: dict[PointName, ReturnedPointRoles] = {}
+  ```
+- **Example of bad practice** (DO NOT USE):
+  ```python
+  # WRONG: Generic names provide no information
+  result = SchemaNamespace.get_or_create(...)
+  result = list(AssetType.nodes.filter(uri__in=[...]))
+  result: dict[AssetName, ReturnedPoints] = {}
+  result: dict[PointName, ReturnedPointRoles] = {}
+  ```
+
+### Principle: Descriptive Prefixes for Cleaned/Validated Data
+- **MANDATORY**: When input data undergoes cleaning or validation (stripping whitespace, filtering empties, normalizing), the cleaned version must be named with a `clean_` prefix followed by a descriptive noun that reflects the data's content.
+- **Pattern**: `clean_labels` for cleaned label strings, `clean_rows` for cleaned row dicts, `clean_row` for a single cleaned row being built up.
+- **Rationale**: Clearly distinguishes raw input from validated data, making the data flow through the function self-documenting.
+- **Example of good practice**:
+  ```python
+  # CORRECT: clean_ prefix + descriptive noun
+  clean_labels: list[SchemaNamespaceLabel] = [label.strip() for label in labels if label and label.strip()]
+  clean_rows: list[dict[str, Any]] = []
+  for row in rows:
+      name = row.get('name', '').strip()
+      if not name:
+          continue
+      clean_row: dict[str, Any] = {'name': name}
+      clean_rows.append(clean_row)
+  ```
+- **Example of bad practice** (DO NOT USE):
+  ```python
+  # WRONG: Generic 'cleaned' says nothing about what was cleaned
+  cleaned = [lbl.strip() for lbl in labels if lbl and lbl.strip()]
+  cleaned: list[dict[str, Any]] = []
+  ```
+
 ### Principle: Explicit Critical Distinctions in Variable Names and Types (CLARITY OVER BREVITY)
 - **MANDATORY**: When a distinction is **critical for correctness** (like 0-based vs 1-based indexing, signed vs unsigned, string vs integer representations, metadata vs footer labels, etc.), make it **explicit and unambiguous** in both the variable/constant name and type annotations.
 - **Apply to ALL names**: variables, function parameters, return values, constants, class attributes, and properties.
@@ -769,6 +849,31 @@ def create_item(self, data: dict) -> Item:
 - **Pattern**: Check inputs at method entry, raise `ValueError` with descriptive messages
 - **Rationale**: Fail fast, clear feedback, easier debugging
 - **Benefits**: Better error messages, earlier failure detection, clearer intent
+
+### Principle: Fail Loudly - No Silent Fallbacks (MANDATORY)
+- **MANDATORY**: If an operation fails or an expected item is not found, the code must fail loudly (raise an exception or propagate the error). Do NOT silently degrade by providing a "basic" or "empty" fallback result.
+- **Pattern**: Remove all `try/except` blocks or `if/else` branches that silently construct a fallback result when the primary operation fails. Let the exception propagate, or access the result directly (e.g., dict key access that raises `KeyError` if missing).
+- **Rationale**: Silent fallbacks mask bugs. When serialization, lookup, or batch operations fail, the caller gets incorrect data without any indication of the failure. This leads to hard-to-diagnose bugs downstream.
+- **Example of good practice**:
+  ```python
+  # CORRECT: Fails loudly if key is missing - caller immediately knows something is wrong
+  return serialized_dict[schema_namespace.label]
+  ```
+- **Example of bad practice** (DO NOT USE):
+  ```python
+  # WRONG: Silent fallback masks the actual failure
+  if schema_namespace.label in serialized_dict:
+      return serialized_dict[schema_namespace.label]
+  # Fallback: return basic structure with empty relationships
+  result = {'schema_namespace_label': schema_namespace.label}
+  for rel_key in return_serialized_relationships:
+      result[rel_key] = []
+  return result
+  ```
+- **When silent fallbacks are acceptable**:
+  - When the absence is a normal, expected condition (e.g., `get_or_none` returning `None`)
+  - When the function's contract explicitly documents that missing items return a default value
+  - When the fallback is intentional type branching (e.g., returning a list vs dict based on a flag)
 
 ### Principle: Database Error Handling
 - **MANDATORY**: Let exceptions propagate in most cases, log context for bulk operations

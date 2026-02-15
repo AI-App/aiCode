@@ -384,6 +384,63 @@ _connection_pool = initialize_pool()      # Side effects on import
       ...
   ```
 
+### Principle: Explicit Type Annotations on Significant Local Variables (MANDATORY)
+- **MANDATORY**: All significant local variables — variables that hold domain data, intermediate computation results, or values whose type is not immediately obvious — must have explicit type annotations.
+- **"Significant" includes**: Variables holding collections of domain objects, counters/totals, timer values, lookup dictionaries, cleaned/validated data, and any variable whose type is not trivially obvious from the right-hand side.
+- **Rationale**: In large and complex codebases, explicit type annotations on local variables allow readers to understand the code without hovering, tracing assignments, or consulting IDE tooling. They serve as inline documentation.
+- **Benefits**: Self-documenting code, easier code reviews, better IDE support, catches type mismatches earlier
+- **Example of good practice**:
+  ```python
+  # CORRECT: Every significant variable is annotated
+  start_time: float = time.time()
+  clean_labels: list[SchemaNamespaceLabel] = [label.strip() for label in labels if label and label.strip()]
+  total_rows: int = len(clean_rows)
+  asset_names: list[AssetName] = [row['name'] for row in result]
+  spatial_element_names: list[SpatialElementName] = [row['name'] for row in result]
+  points_by_asset: dict[AssetName, ReturnedPoints] = {}
+  elapsed_time: float = time.time() - start_time
+  ```
+- **Example of bad practice** (DO NOT USE):
+  ```python
+  # WRONG: Unannotated variables force readers to trace types
+  start_time = time.time()
+  clean_labels = [label.strip() for label in labels if label and label.strip()]
+  total_rows = len(clean_rows)
+  asset_names = [row['name'] for row in result]
+  result = {}
+  elapsed_time = time.time() - start_time
+  ```
+- **When annotation is NOT required**: Simple loop variables (`for i in range(n)`), trivially obvious assignments (`name = "hello"`), and throwaway variables.
+
+### Principle: Non-Mutable Default Arguments (MANDATORY)
+- **MANDATORY**: Never use mutable objects (`list`, `dict`, `set`) as default argument values in function/method signatures. Use `None` and create the mutable object inside the function body.
+- **Pattern**: `def f(items: Optional[list[str]] = None):` with `items = items or []` inside the body if needed, or simply test `if items:` / `if not items:`.
+- **Rationale**: Python evaluates default arguments once at function definition time, not at each call. A mutable default is shared across all calls, leading to unexpected state leakage between invocations — one of Python's most well-known gotchas.
+- **Benefits**: Prevents subtle shared-state bugs, follows Python community best practice, satisfies linter rules (e.g., Ruff B006)
+- **Example of good practice**:
+  ```python
+  # CORRECT: None default, create mutable inside body
+  def get_assets(
+      self,
+      djangolike_filters: Optional[dict[str, Any]] = None,
+  ) -> list[Asset]:
+      if not djangolike_filters:
+          assets = Asset.nodes.all()
+      else:
+          assets = Asset.nodes.filter(**djangolike_filters)
+      ...
+  ```
+- **Example of bad practice** (DO NOT USE):
+  ```python
+  # WRONG: Mutable default - shared across all calls
+  def get_assets(
+      self,
+      djangolike_filters: dict[str, Any] = {},  # BUG: shared mutable default
+  ) -> list[Asset]:
+      assets = Asset.nodes.filter(**djangolike_filters)
+      ...
+  ```
+
 ## Function Call Conventions
 
 ### Principle: Prefer Keyword Arguments Over Positional Arguments (MANDATORY)
