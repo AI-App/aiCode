@@ -771,6 +771,41 @@ result = value if condition and other_condition else default  # CORRECT: Complex
 - `value or default_string` - Use default string when value is falsy (None, empty string, etc.)
 - `value or normalized_uri` - Use normalized URI when value is falsy (common for URI fallbacks)
 
+## Validation and Error Handling
+
+### Principle: Prefer Explicit `raise` Over `assert` for Validation (MANDATORY)
+- **MANDATORY**: Use explicit `raise ValueError` / `raise TypeError` instead of `assert` statements for validating function arguments, pre-conditions, and data integrity checks.
+- **Rationale**: Python's `assert` statements are **stripped entirely** when the interpreter runs in optimized mode (`python -O` or `python -OO`). This means any validation relying on `assert` silently disappears in production, allowing invalid data to propagate and cause hard-to-diagnose failures far from the source.
+- **When `assert` is acceptable**: Only in test code (`test_*.py` / `*_test.py`) where assertions are the expected mechanism, or in truly unreachable-code guards during development that are not required for correctness.
+- **When `raise` is required**: All runtime validation — checking that required data is present, that types are correct, that pre-conditions hold before performing operations.
+- **Benefits**: Validation survives optimized mode, clearer intent (the exception type documents *what* went wrong), better traceability in production logs.
+
+**Example of good practice**:
+```python
+def get_points(self, obj: Asset) -> list[str]:
+    names = getattr(obj, '_prefetched_point_names', None)
+    if names is None:
+        raise ValueError(
+            f"Expected '_prefetched_point_names' on {obj.__class__.__name__} instance. "
+            "Ensure get_queryset() pre-fetches relationships."
+        )
+    if not isinstance(names, list):
+        raise TypeError(
+            f"Expected '_prefetched_point_names' to be a list, got {type(names).__name__}"
+        )
+    return names
+```
+
+**Example of bad practice** (DO NOT USE):
+```python
+def get_points(self, obj: Asset) -> list[str]:
+    names = getattr(obj, '_prefetched_point_names', None)
+    # WRONG: assert is stripped in optimized mode (-O) — validation silently disappears
+    assert names is not None, "Expected '_prefetched_point_names' on instance"
+    assert isinstance(names, list), f"Expected list, got {type(names).__name__}"
+    return names
+```
+
 ---
 
 ## Output and User Interface Guidelines
