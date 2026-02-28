@@ -291,6 +291,33 @@ If someone else renamed the submodule and you **pull** that commit, your repo ge
 - **`git submodule status`:** The new submodule shows with a `-` prefix (not initialized). The old path no longer appears in the list.
 - **`.git/config`:** Still contains the old `[submodule "AISE/Honeywell/Anaconda"]` block. Pull does **not** remove it; only `.gitmodules` and the index are updated.
 
+### Orphaned Old-Path Detection and Human Confirmation Gate (MANDATORY)
+
+This is a common "already-pulled rename" case: the new submodule path is already present, while the old path is now orphaned and appears as an untracked directory in the parent repo.
+
+**Detection signals (treat as orphaned-old-path case when most are true):**
+- Old path is no longer listed in `git submodule status`.
+- Parent repo shows old path as untracked directory (for example `?? <old-path>/`).
+- New path exists and is recognized as the active submodule.
+- Old path still has a valid submodule `.git` pointer into `.git/modules/<old-key>`.
+
+**High-risk heuristic for data loss:**
+- `git -C "<old-path>" ls-files --others | wc -l` returns a large number (for example, hundreds or thousands).
+
+When this high-risk condition is detected, **DO NOT continue cleanup automatically**.
+
+You must **pause and explicitly confirm with the human user** before deleting/removing:
+- old working directory (`rm -rf <old-path>`)
+- old metadata directory (`rm -rf .git/modules/<old-key>`)
+- stale old submodule block in `.git/config`
+
+Ask the user to choose one of these intents first:
+1. **Preserve and migrate** untracked files into the new submodule path (recommended default)
+2. **Archive only** (backup tar/list, no restore yet)
+3. **Discard** old-path untracked files intentionally
+
+**Important:** In this orphaned case, large untracked counts often mean the old path contains valuable local artifacts that were never tracked by Git. Never assume they are disposable.
+
 ### Preserving untracked files (required — do not skip)
 
 **You must save all untracked files before removing the old submodule directory.** There is no in-process recovery: once you delete the old directory, any unsaved files are permanently lost. This process does **not** rely on Dropbox or any other external backup.
