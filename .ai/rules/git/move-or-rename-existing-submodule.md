@@ -12,6 +12,32 @@ When moving/renaming a submodule, you need to update:
 5. The `.git` file inside the submodule (points to the Git metadata)
 6. The `worktree` path in the submodule's config file
 
+## Preferred Fast Path (Owner Workflow)
+
+For a straightforward move/rename that you are performing in your own branch, use this sequence first before manual surgery:
+
+```bash
+# 1) Rename the gitlink/path in parent repo
+git mv <old-submodule-path> <new-submodule-path>
+
+# 2) Rename submodule key in .gitmodules
+git config -f .gitmodules --rename-section "submodule.<old-key>" "submodule.<new-key>"
+
+# 3) Update path/url in .gitmodules
+git config -f .gitmodules "submodule.<new-key>.path" "<new-submodule-path>"
+git config -f .gitmodules "submodule.<new-key>.url" "<new-url>"
+
+# 4) Update local parent-repo config
+git config --rename-section "submodule.<old-key>" "submodule.<new-key>"
+git config "submodule.<new-key>.url" "<new-url>"
+
+# 5) Sync and align submodule origin
+git submodule sync -- "<new-submodule-path>"
+git -C "<new-submodule-path>" remote set-url origin "<new-url>"
+```
+
+After this fast path, run the verification steps in this document. If `.git/modules/...`, submodule `.git`, or `worktree` pointers are stale, fix them using the manual steps below.
+
 ## Step-by-Step Process
 
 ### Prerequisites
@@ -147,6 +173,12 @@ Stage the changes to `.gitmodules`:
 git add .gitmodules
 ```
 
+Also stage old/new submodule paths so the gitlink move is recorded:
+
+```bash
+git add <old-submodule-path> <new-submodule-path>
+```
+
 If you moved the submodule directory, Git should detect it. Check status:
 
 ```bash
@@ -208,6 +240,16 @@ Assuming the submodule is currently at `.submodules/AISE/Honeywell/Anaconda` and
 - Ensure the `worktree` path in the submodule's config is correct
 - Try: `git submodule sync` followed by `git submodule update --init`
 
+### Stash apply/pop fails during merge
+
+If you are in the middle of a merge (`git pull` produced conflicts), `git stash pop` or `git stash apply` may fail with index errors (e.g. `could not write index`).
+
+- Resolve merge conflicts first, then apply stash.
+- Or apply only specific files from stash:
+  ```bash
+  git checkout "stash@{0}" -- <path>
+  ```
+
 ### Uncommitted work is missing
 
 - Check that you moved the directory (not copied)
@@ -224,6 +266,17 @@ The `worktree` path is relative from `.git/modules/<path>/config` to the actual 
 - From `.git/modules/AISE/Honeywell/Vulcan/` to repo root: `../../../../`
 - From repo root to `.submodules/AISE/Honeywell/Vulcan/`: `.submodules/AISE/Honeywell/Vulcan/`
 - Combined: `../../../../.submodules/AISE/Honeywell/Vulcan`
+
+### PowerShell note (`&&`)
+
+On some Windows PowerShell versions, `&&` is not supported as a command separator.
+
+- Run commands one-by-one, or use `;` if you intentionally want to continue after failures.
+- Prefer explicit, sequential execution for submodule operations.
+
+### Windows hidden/read-only submodule `.git` file
+
+If editing `<submodule>/.git` fails with permission/read-only errors, clear read-only and update the file, then re-open it to verify the `gitdir:` pointer is correct.
 
 ## When You Pull a Commit That Renames a Submodule (Recipient Workflow)
 
