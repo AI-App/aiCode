@@ -318,6 +318,16 @@ Ask the user to choose one of these intents first:
 
 **Important:** In this orphaned case, large untracked counts often mean the old path contains valuable local artifacts that were never tracked by Git. Never assume they are disposable.
 
+### Confirmed-Discard Fast Path (Allowed After Explicit User Confirmation)
+
+If the user explicitly confirms that the old orphaned copy can be removed (for example: "just delete the old copy"), you may skip backup/restore and perform direct cleanup:
+
+1. Remove old working directory: `rm -rf <old-path>`
+2. Remove old metadata directory: `rm -rf .git/modules/<old-submodule-key>`
+3. Remove stale local config block: `git config --remove-section "submodule.<old-submodule-key>"`
+
+**Guardrail:** Only use this fast path after an explicit human confirmation in the current session. If confirmation is ambiguous, ask again.
+
 ### Preserving untracked files (required — do not skip)
 
 **You must save all untracked files before removing the old submodule directory.** There is no in-process recovery: once you delete the old directory, any unsaved files are permanently lost. This process does **not** rely on Dropbox or any other external backup.
