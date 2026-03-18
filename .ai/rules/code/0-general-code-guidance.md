@@ -356,6 +356,16 @@ alwaysApply: true
   - When they are user-facing configuration options (e.g., `chunk_size` for bulk operations, `progress_callback` for progress reporting)
   - When they are required for the operation but have sensible defaults
 
+### Principle: Collapse Redundant Runtime Layers
+- **MANDATORY**: If multiple classes/interfaces exist only to pass through the same data flow, collapse them into a smaller surface.
+- **Pattern**: Prefer one clear runtime class plus local helper functions over adapter/protocol/notifier chains that do not provide independent behavior.
+- **When to collapse**:
+  - Wrapper classes only delegate one-to-one calls
+  - Multiple notifier classes share identical serialization logic
+  - Interface/protocol types are used in only one concrete path
+- **Rationale**: Reduces cognitive load and makes control flow easier to trace.
+- **Exception**: Keep layers that represent genuinely distinct extension points (e.g., multiple backends, pluggable transports, or test seams used in practice).
+
 ### Principle: Do Not Hoard Ephemeral State as Attributes
 - **MANDATORY**: Do not keep one-shot or ephemeral inputs (like raw config dictionaries or file paths) as long-lived attributes if they are only needed to construct more stable dependencies (e.g., connection managers, schema objects).
 - If a value is **passed once and immediately used** to build a durable dependency, prefer:

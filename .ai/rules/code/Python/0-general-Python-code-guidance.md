@@ -681,13 +681,18 @@ from .._django import Agent as AgentInDb, ProblemSolvingSession
 ## Class Constants and Initialization Defaults
 
 ### Principle: Extract Initialization Defaults as Class Constants
-- **MANDATORY**: Default values used in `__init__` method parameters should be defined as class constants (not hardcoded in the method signature).
+- **DEFAULT PRACTICE**: Default values used in `__init__` method parameters should usually be defined as class constants (not hardcoded in the method signature).
 - This improves clarity, maintainability, and makes defaults discoverable and reusable.
 - Class constants for initialization defaults should:
   - Be defined at the class level (before `__init__`)
   - Follow explicit naming conventions (e.g., `DEFAULT_RESOURCE_TYPE_STR: str`, `DEFAULT_PDF_FILE_NAME_STR: str`)
   - Include type annotations for clarity
   - Be referenced in `__init__` method signatures and implementations
+- **Pragmatic exceptions (allowed)**:
+  - Dataclasses or lightweight runtime classes that read framework settings directly and do not benefit from extra `DEFAULT_*` aliases.
+  - Cases where adding class constants would only duplicate existing canonical configuration without improving readability.
+  - One-off scripts/tools where class-level constants would add ceremony without reuse value.
+- **Rule of thumb**: prefer the option that makes the file easier to scan. Do not add indirection purely for stylistic compliance.
 - **Examples of good practice**:
   ```python
   class MyResource:
