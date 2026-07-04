@@ -417,6 +417,32 @@ Organized as **Do / Avoid / When** with links to Neomodel 6.x docs.
 | **Avoid** | Indexing JSON blobs or numeric aggregates “just in case” — adds write amplification on MERGE-heavy populate. |
 | **When** | Adding a new filter dimension (e.g. `metric_set_id`, `subject_kind`) — index it before shipping. See [Schema management](https://neomodel.readthedocs.io/en/latest/schema_management.html) and [Index and Constraint Management](https://neomodel.readthedocs.io/en/latest/configuration.html#index-and-constraint-management). |
 
+### Datetime property selection
+
+Neomodel offers three datetime property types ([Property types — Dates and times](https://neomodel.readthedocs.io/en/latest/properties.html#dates-and-times)). **forge_odb policy:**
+
+| Property | Stored in Neo4j | Use for | Do not use for |
+| --- | --- | --- | --- |
+| **`DateTimeProperty`** | UTC epoch **float** | Non-user-facing / system audit timestamps: `created`, `updated`, `computed_at`, `needs_redo_since`, `retired_at` | Period boundaries, operator-facing local civil time, indexed range scans |
+| **`DateTimeNeo4jFormatProperty`** | Native Neo4j **temporal** (`neo4j.time.DateTime`) | **Facility-local, user-facing** datetimes that operators reason about and that appear in hot-path filters: `local_period_start`, `local_period_end`, `hour_start` | Ad-hoc string formatting; audit-only stamps |
+| **`DateTimeFormatProperty`** | **String** (`strftime`) | **Do not use** unless a human administrator explicitly instructs so **and** provides a convincing rationale (e.g. immovable legacy external format) | New analytical or structural models — string dates break native temporal indexing/range semantics and lose timezone discipline |
+
+**Rationale (concise):**
+
+- **`DateTimeNeo4jFormatProperty`** gives native temporal performance (indexed `>=` / `<` on period spines, spine-window preloads) and round-trips through Bolt as a real datetime — not an opaque epoch float or a lexicographic string.
+- **`DateTimeProperty`** is fine for machine audit fields that are never spine-filtered; `DjangoNeoModelWithCreatedAndUpdatedProps` uses it for `created` / `updated` (intentionally **not** indexed).
+- **`DateTimeFormatProperty`** is the weakest choice: no native temporal type, easy to get comparison/timezone wrong, and no benefit over native temporal when the value is domain time the operator sees.
+
+**Codebase consistency:** As of migration to unified analytical products, forge_odb follows this split — e.g. `meter_level.py` uses `DateTimeNeo4jFormatProperty` on `local_period_start` / `local_period_end` and `DateTimeProperty` on `computed_at` / `needs_redo_since` / `retired_at`. **`DateTimeFormatProperty` does not appear in `forge_odb`.**
+
+**Implementation helpers (facility-local → persist):**
+
+- Before writing facility-local civil time to a native temporal field, use `forge_odb.util.datetime.coerce_to_utc_for_neo4j_datetime()` (Bolt dehydrate-safe UTC instant preserving the facility-local meaning).
+- `forge_odb.util.django.neomodel.coerce_to_fixed_offset_for_neo4j` is applied on `DateTimeNeo4jFormatProperty.deflate` to avoid neo4j-driver issues with `zoneinfo.ZoneInfo` tzinfos.
+- With `NEOMODEL_FORCE_TIMEZONE=True` in `forge_odb._django.settings`, **`DateTimeProperty` requires timezone-aware datetimes** on deflate — naive datetimes fail.
+
+**Bulk Cypher caveat:** `UNWIND $rows` MERGE paths bypass NeoModel property `deflate`. Row dicts must carry driver-safe datetime values (see `_normalize_period_rollup_row_for_merge`, `neo4j_bulk_timestamps()`). Epoch audit fields in bulk templates use UTC epoch seconds to stay comparable with `DateTimeProperty` storage.
+
 ### Cardinality (Neomodel 6 strict default)
 
 | | Guidance |
