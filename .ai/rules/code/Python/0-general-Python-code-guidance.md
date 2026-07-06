@@ -76,6 +76,41 @@ __all__ = [
    - Complex initialization logic
    - Heavy imports that slow down module loading
 
+### Principle: No Re-export Outside `__init__.py` (MANDATORY)
+- **MANDATORY**: Only `__init__.py` files may aggregate and re-export symbols imported from other modules. All other modules import for **local use only**.
+- If a non-`__init__` module declares `__all__`, every name in `__all__` must be **defined in that same module** (class, function, constant, type alias)—not a passthrough of something imported elsewhere.
+- Do **not** create shim modules outside `__init__.py` that exist only to re-export via `import *` or named imports from another module.
+- **Rationale**: Re-export shims hide the defining module, encourage import cycles, and make public API surfaces hard to discover. Package `__init__.py` is the single aggregation point.
+- **Import rule**: Callers import from the **defining module** or the package **`__init__.py` barrel**, not from intermediate implementation modules.
+
+**Example of bad practice** (DO NOT USE):
+```python
+# WRONG — mixin.py re-exporting DependencySlot in __all__
+from .dependency_registry import DependencySlot
+__all__ = ('MyMixin', 'DependencySlot')
+
+# WRONG — json_safe.py shim outside __init__.py
+from mypackage._engine.json_safe import *  # noqa
+```
+
+**Example of good practice**:
+```python
+# OK — dependency_registry.py defines and exports DependencySlot
+class DependencySlot:
+    ...
+
+# OK — package/__init__.py aggregates public API
+from .dependency_registry import DependencySlot
+from .mixin import AnalyticalComputedMixin
+__all__ = ('DependencySlot', 'AnalyticalComputedMixin')
+
+# OK — caller imports from defining module or package barrel
+from mypackage.dependency_registry import DependencySlot
+from mypackage import DependencySlot
+```
+
+See also **Keep `__init__.py` Files Light** above: `__init__.py` is the **only** place for public API aggregation via re-exports.
+
 ### Principle: Prefer Relative Imports in `__init__.py` Files
 - **MANDATORY**: Within a package, `__init__.py` files should use **relative imports** (`.module_name`) to import from sibling modules.
 - Relative imports make the code more readable and maintainable by avoiding verbose absolute paths.
