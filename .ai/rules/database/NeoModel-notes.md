@@ -417,6 +417,71 @@ Organized as **Do / Avoid / When** with links to Neomodel 6.x docs.
 | **Avoid** | Indexing JSON blobs or numeric aggregates “just in case” — adds write amplification on MERGE-heavy populate. |
 | **When** | Adding a new filter dimension (e.g. `metric_set_id`, `subject_kind`) — index it before shipping. See [Schema management](https://neomodel.readthedocs.io/en/latest/schema_management.html) and [Index and Constraint Management](https://neomodel.readthedocs.io/en/latest/configuration.html#index-and-constraint-management). |
 
+### Graph schema evolution, migrations, and obsolete properties
+
+Neo4j is **not** relational Django migrations. With **(Django-)NeoModel**, treat the Python model classes as the **application contract**; the graph is **schema-flexible** for labels and properties.
+
+#### Neo4j “migrations” vs SQL (Django/Flyway)
+
+| Concern | Relational DB (Django migrations) | Neo4j + (Django-)NeoModel |
+| --- | --- | --- |
+| **Tables / labels** | DDL migrations required | Labels appear when nodes are created; no formal DDL |
+| **Columns / properties** | `ALTER TABLE` tracked in migration history | Properties are optional key–value pairs on nodes; no automatic sync with Python |
+| **Indexes & constraints** | Migration files | `db.install_all_labels()` / `bin/neo4j/install-labels-and-indexes` — sync **declared** indexes from model classes |
+| **Data backfills / relabel / rewire** | Often in migrations | Ad hoc **Cypher scripts** (optionally numbered), run operationally — not auto-applied on deploy |
+| **Version tracking** | `django_migrations` table (or Flyway history) | **No built-in history** unless you add a runner + `SchemaMigration` nodes yourself |
+
+Ecosystem tools exist ([Neo4j Migrations](https://neo4j.com/docs/migrations/), Liquibase/Flyway adapters), but they are **not** part of the Neomodel/django-neomodel stack and are **not** used in forge_odb today.
+
+**forge_odb practice today:**
+
+- **Schema-ish:** `bin/neo4j/install-labels-and-indexes` → `db.install_all_labels()` after model/index changes.
+- **Graph shape / data refactors:** optional numbered `.cypher` under `_graph_migrations/` (manual, draft-or-runbook — not CI-gated like Django migrations).
+- **Django `migrations/`** in this monorepo applies to **Postgres/Django relational** apps (e.g. IoT Django history), **not** the Neo4j analytical graph.
+
+#### Policy: migrations are generally not worth maintaining
+
+**Conclusion for (Django-)NeoModel projects:** a standing **versioned migration pipeline for the Neo4j graph is usually not worth the maintenance cost**.
+
+Reasons:
+
+1. **Neomodel already owns what matters for correctness at scale** — indexes and constraints declared on model classes, installed via `install_all_labels`.
+2. **Property and label changes are code-first** — deploy new Python; new writes follow the new shape; old nodes can coexist.
+3. **Analytical products use retire-not-mutate** — historical instances are **supposed** to remain on the graph with their snapshot fields; “migrate every node to the latest shape” fights the audit model.
+4. **Migration runners add ops burden** — ordering, idempotency, multi-facility rollout, and drift between “migration head” and “code head” without the tight enforcement Django gives you on Postgres.
+
+**Do instead:**
+
+- Change NeoModel classes → run **install-labels-and-indexes** per facility.
+- Rely on **ensure-on-read / recompute** to mint new official instances with the new payload shape.
+- Use **one-off Cypher** only for rare, high-value cleanups (admin purge, relabel campaigns) — not for every property rename.
+
+**When a numbered graph migration *is* justified:** one-time breaking graph surgery (relationship type renames, mass relabel, dedupe) where recompute cannot fix the graph and the operation is documented with dry-run counts. Keep these **exceptional**, not routine.
+
+#### Obsolete properties on nodes (“deadweight fields”)
+
+Removing a `Property` from a NeoModel class **does not remove** that property from existing Neo4j nodes. Old rows may still carry dropped fields (e.g. retired `source_sample_count` on analytical instances).
+
+**This is not a crime** — especially with retire-not-mutate and audit retention.
+
+| Area | Impact of unused properties |
+| --- | --- |
+| **Correctness** | None, if application code no longer reads or filters on them |
+| **Indexed lookups** | None, if the dead property is **not** indexed |
+| **Storage / backup** | Small per-node overhead (key + value) |
+| **Query performance** | **Minimal** for targeted reads (`MATCH … WHERE n.cache_key = $key RETURN n.kwh`) — unused properties are not used in planning |
+| **Full-node reads** | Slightly more I/O if you `RETURN n` or hydrate entire nodes instead of projecting fields |
+| **Developer confusion** | Main risk — document contract in Python, not by assuming the graph matches the latest class exactly |
+
+**When cleanup is optional housekeeping:** large JSON blobs removed from the contract, indexed properties no longer used (wasted index maintenance), or export/backup size matters. Example cleanup (per label, after dry-run `count`):
+
+```cypher
+MATCH (n:`ForgeODB_Analytical_ExampleMetricSet`)
+REMOVE n.obsolete_property
+```
+
+**When to leave dead properties alone:** retired/historical nodes, short-lived numeric spine fields, or any case where recompute/retirement will naturally supersede old instances.
+
 ### Datetime property selection
 
 Neomodel offers three datetime property types ([Property types — Dates and times](https://neomodel.readthedocs.io/en/latest/properties.html#dates-and-times)). **forge_odb policy:**
