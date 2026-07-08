@@ -602,8 +602,10 @@ def _get_point_role_and_aspect_type_caches(
   1. **Future imports** (if needed): `from __future__ import annotations`
   2. **Standard library imports**: `import argparse`, `import json`, `from pathlib import Path`
   3. **Third-party imports**: `import pandas as pd`, `from tqdm import tqdm`
-  4. **Internal/local imports**: `from autonomous_building import ...`
-  5. **Within each group**: **MANDATORY** - Alphabetical ordering (unless explicitly instructed/overridden otherwise)
+  4. **Internal/local imports**: absolute imports from the current project/package (e.g. `from autonomous_building import ...`, `from agent_neo.graph import ...`)
+  5. **Relative local imports** (when used): same-package relative imports (e.g. `from .enum import GraphEdgeKind`, `from .._django import Agent`)
+  6. **`TYPE_CHECKING` imports** (when used): the `if TYPE_CHECKING:` block and its indented imports — always **last** in the import section
+  7. **Within each group**: **MANDATORY** - Alphabetical ordering (unless explicitly instructed/overridden otherwise)
 
 **Example of good practice**:
 ```python
@@ -643,11 +645,12 @@ import argparse
 - **Maintainability**: Clear separation between stdlib, third-party, and internal code
 
 ### Import Grouping Rules
-- **Group by source**: Standard library, third-party, internal
-- **Separate groups**: Use blank lines between groups (one blank line is sufficient)
+- **Group by source**: `__future__` → standard library → third-party → internal/local (absolute) → relative local → `TYPE_CHECKING`
+- **Separate groups with single blank lines**: Put **exactly one blank line** between each import block listed above. Do not run adjacent groups together (e.g. never place `from typing import ...` immediately above `from django...` without a blank line between them).
+- **Two blank lines after imports**: After the final import block (including a trailing `if TYPE_CHECKING:` block when present), put **two blank lines** before the next module content (`__all__`, module-level constants, type aliases, or class/function definitions).
 - **Group comments**: **RECOMMENDED** - Add comments identifying each import group for clarity (e.g., `# Standard library imports (alphabetical)`, `# Third-party imports (alphabetical)`, `# Internal imports (alphabetical)`)
 - **Within groups**: **MANDATORY** - Alphabetical ordering (unless explicitly instructed/overridden otherwise)
-- **Relative vs absolute**: Use absolute imports for cross-package imports, relative imports for same-package modules. **Within internal imports group**: Absolute imports come first, then relative imports (both alphabetically ordered within their respective subgroups)
+- **Relative vs absolute**: Use absolute imports for cross-package imports; use relative imports for same-package modules. **Order**: absolute internal/local imports first, then relative local imports (each subgroup alphabetically ordered). Do not mix third-party imports into the local/relative groups.
 - **Organize large import lists**: For large import lists (e.g., many query constants), use comments to group related imports for readability
   - **Pattern**: `# Group name` comment before related imports
   - **When to use**: When importing 10+ items from a single module, especially when they can be logically grouped
@@ -674,7 +677,7 @@ import inspect
 import json
 import os
 from pathlib import Path
-from typing import Any, Literal, LiteralString
+from typing import TYPE_CHECKING, Any, Literal, LiteralString
 from uuid import UUID
 
 # Third-party imports (alphabetical)
@@ -684,7 +687,28 @@ from dana.core.agent.star_agent import STARAgent
 from ORION.ontology.physical._django.models import AssetName, PointName, SpatialElementName
 from ORION.util.llm import DEFAULT_LLM_PROVIDER, DEFAULT_LLM, DEFAULT_MAX_CONTEXT_TOKENS
 
+# Relative local imports (alphabetical)
 from .._django import Agent as AgentInDb, ProblemSolvingSession
+
+if TYPE_CHECKING:
+    from rest_framework.viewsets import ReadOnlyModelViewSet
+
+
+__all__ = [
+    "DEFAULT_LLM",
+    "STARAgent",
+]
+```
+
+**Example of bad practice** (DO NOT USE):
+```python
+from __future__ import annotations
+from typing import Any
+from django.db import models
+from agent_neo.graph.queries import GraphDbQueryAndReturnHeaderList
+if TYPE_CHECKING:
+    from rest_framework.viewsets import ReadOnlyModelViewSet
+type Row = list[Any]
 ```
 
 **Benefits of Group Comments:**
