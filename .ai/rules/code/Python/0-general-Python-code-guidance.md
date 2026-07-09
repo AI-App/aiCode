@@ -63,9 +63,9 @@ __all__ = [
 
 ### Principle: No Empty `__init__.py` Files (MANDATORY)
 - **MANDATORY**: Do **not** add or keep `__init__.py` files that are empty, whitespace-only, or contain only a module docstring (with or without `from __future__ import annotations`).
-- **Delete** such files during cleanup. Callers should import from the **defining module** (e.g. `package.submodule.symbol`) or from a package barrel that actually re-exports symbols.
+- **Delete** such files during cleanup. Callers should import from the **defining module** (e.g. `package.submodule.symbol`).
 - **Rationale**: Empty `__init__.py` files add noise, imply a public API where none exists, and encourage mistaken `from package import thing` imports that only work when a barrel is maintained.
-- **When `__init__.py` is required**: Only create or keep one when it performs real work—re-exports via imports and `__all__`, or other package-level setup that belongs at the package boundary.
+- **When `__init__.py` is required**: Only create or keep one when it performs real work—explicit named re-exports and `__all__`, or other package-level setup that belongs at the package boundary.
 
 **Example of bad practice** (DO NOT USE):
 ```python
@@ -73,12 +73,28 @@ __all__ = [
 """Helpers for energy period rollup Django models."""
 ```
 
+### Principle: No Star Exports or `import *` Shims (MANDATORY)
+- **MANDATORY**: Do **not** use `from module import *` in any `__init__.py` (or anywhere else).
+- **MANDATORY**: Delete `__init__.py` files that exist only as star-export shims (e.g. aggregating many sibling modules via `import *` with no callers importing from the package root).
+- **Package barrels** (when genuinely needed, e.g. Django model registration) must re-export with **explicit named imports** only, plus an `__all__` tuple that lists those names.
+- **Import rule**: Callers import from the **defining module** (`package.submodule.Symbol`), not from intermediate package roots or star-export shims.
+
+**Example of bad practice** (DO NOT USE):
+```python
+# WRONG — star-export shim; delete file or replace with explicit imports
+from mypackage._engine.energy_helpers import *  # noqa: F403
+from mypackage._engine.reducers import *  # noqa: F403
+```
+
 **Example of good practice**:
 ```python
-# OK — real barrel at package boundary
+# OK — explicit barrel (only when a package boundary truly needs aggregation)
 from .monitoring_report import PlantMonitoringReport
 
 __all__ = ('PlantMonitoringReport',)
+
+# OK — caller imports from defining module
+from mypackage._engine.plant.monitoring_report import PlantMonitoringReport
 ```
 
 ### Guidelines for `__init__.py` Files
@@ -100,6 +116,7 @@ __all__ = ('PlantMonitoringReport',)
 - **MANDATORY**: Only `__init__.py` files may aggregate and re-export symbols imported from other modules. All other modules import for **local use only**.
 - If a non-`__init__` module declares `__all__`, every name in `__all__` must be **defined in that same module** (class, function, constant, type alias)—not a passthrough of something imported elsewhere.
 - Do **not** create shim modules outside `__init__.py` that exist only to re-export via `import *` or named imports from another module.
+- Do **not** use `from module import *` in `__init__.py` barrels—use explicit named imports only.
 - **Rationale**: Re-export shims hide the defining module, encourage import cycles, and make public API surfaces hard to discover. Package `__init__.py` is the single aggregation point.
 - **Import rule**: Callers import from the **defining module** or the package **`__init__.py` barrel**, not from intermediate implementation modules.
 
@@ -111,6 +128,9 @@ __all__ = ('MyMixin', 'DependencySlot')
 
 # WRONG — json_safe.py shim outside __init__.py
 from mypackage._engine.json_safe import *  # noqa
+
+# WRONG — star-export package __init__.py
+from mypackage._engine.reducers import *  # noqa: F403
 ```
 
 **Example of good practice**:
