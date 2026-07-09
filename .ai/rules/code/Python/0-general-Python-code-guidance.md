@@ -109,6 +109,19 @@ from forge_odb.analytical._engine.energy.meter_scope_bridge import resolve_meter
 __all__ = ('resolve_meter_scope_bridge',)
 ```
 
+### Principle: No Default-Parameter Shims Over `agent_neo` (MANDATORY)
+- **MANDATORY**: Do not add Forge modules that only wrap `agent_neo` APIs to inject default arguments (e.g. default lineage relationship types). Put defaults in `agent_neo` and import from there or the package barrel.
+- **Rationale**: Such shims duplicate API surfaces and block upstream reuse; they are not legitimate Forge facades (unlike `Request` / `AnalyticalProductIdentity` naming over `ComputeRequest`).
+
+**Example of bad practice** (DO NOT USE):
+```python
+# WRONG — delete explain.py; use agent_neo.analytical_product.explain defaults
+from agent_neo.analytical_product.explain import explain_lineage_for_rows as _explain_lineage_for_rows
+
+def explain_lineage_for_rows(rows, *, max_depth=10):
+    return _explain_lineage_for_rows(rows, lineage_relationship_types=_LINEAGE_REL_TYPES, max_depth=max_depth)
+```
+
 ### Guidelines for `__init__.py` Files
 1. **Primary Purpose**: Re-export public APIs from submodules
 2. **Keep It Minimal**: Typically 10-50 lines, mostly imports and `__all__` definitions
