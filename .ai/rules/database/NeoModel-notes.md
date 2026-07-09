@@ -585,6 +585,8 @@ The workaround is **not spaghetti** — it is a thin boundary adapter:
 
 **Rejected alternatives:** (1) pytz everywhere in app code — fights Django/modern stack; (2) plain `datetime.timezone(offset)` only — simpler but drops named zone in Neo4j; (3) waiting for driver 6.x alone — **6.2.0 still segfaults**; fix is upstream in CPython #125318.
 
+- Domain purity audit + phased roadmap: `aiCode/.ai/rules/database/NeoModel-notes.md` (Neo4j driver / zoneinfo section and **Forge vs agent_neo boundary**).
+
 ### Cardinality (Neomodel 6 strict default)
 
 | | Guidance |
