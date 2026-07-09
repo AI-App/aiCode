@@ -502,11 +502,88 @@ Neomodel offers three datetime property types ([Property types — Dates and tim
 
 **Implementation helpers (facility-local → persist):**
 
-- Before writing facility-local civil time to a native temporal field, use `forge_odb.util.datetime.coerce_to_utc_for_neo4j_datetime()` (Bolt dehydrate-safe UTC instant preserving the facility-local meaning).
-- `forge_odb.util.django.neomodel.coerce_to_fixed_offset_for_neo4j` is applied on `DateTimeNeo4jFormatProperty.deflate` to avoid neo4j-driver issues with `zoneinfo.ZoneInfo` tzinfos.
+- **Facility-local → UTC for domain semantics:** `agent_neo.util.datetime.coerce_to_utc_for_neo4j_datetime()` — normalizes to facility-local civil time, then `astimezone(UTC)`. Used when the stored instant should be UTC but the input may be mixed (e.g. hourly consumption `hour_start`). UTC `tzinfo` is driver-safe without extra coercion.
+- **ZoneInfo → driver-safe tzinfo (crash workaround):** `agent_neo.util.django_neomodel.models.coerce_to_fixed_offset_for_neo4j()` — see **Neo4j driver, zoneinfo, and pytz** below. Applied automatically on `DateTimeNeo4jFormatProperty.deflate` via `apply_neo4j_datetime_coercion_patch()` (called from `forge_odb.util.django.setup.ensure_django_setup()`).
 - With `NEOMODEL_FORCE_TIMEZONE=True` in `forge_odb._django.settings`, **`DateTimeProperty` requires timezone-aware datetimes** on deflate — naive datetimes fail.
 
-**Bulk Cypher caveat:** `UNWIND $rows` MERGE paths bypass NeoModel property `deflate`. Row dicts must carry driver-safe datetime values (see `_normalize_period_rollup_row_for_merge`, `neo4j_bulk_timestamps()`). Epoch audit fields in bulk templates use UTC epoch seconds to stay comparable with `DateTimeProperty` storage.
+**Bulk Cypher caveat:** `UNWIND $rows` MERGE paths bypass NeoModel property `deflate`. Row dicts must carry driver-safe datetime values — call `coerce_to_fixed_offset_for_neo4j()` before `Neo4jDateTime.from_native()` (see IoT `bulk_upsert`, `computed_product_cascade._to_neo4j_datetime`). Epoch audit fields in bulk templates use UTC epoch seconds to stay comparable with `DateTimeProperty` storage.
+
+---
+
+## Neo4j driver, zoneinfo, and pytz (load-bearing workaround)
+
+**Last verified:** Python **3.14.4**, neo4j driver **6.2.0** (system `python3` and Dana-ODB `.venv`). Regression tests: `Django-NeoModel/tests/agent_neo/test_neo4j_zoneinfo_driver_compat.py`.
+
+### Problem summary
+
+Modern Python/Django code uses **`zoneinfo.ZoneInfo`** (PEP 615) for facility IANA zones (`Asia/Kolkata`, etc.). The **neo4j Python driver** ships custom nanosecond-precision types in `neo4j.time` (not subclasses of `datetime.datetime`). Official driver docs state temporal types are designed for **`pytz` only**; `zoneinfo` and `datetime.timezone` are documented as unsupported.
+
+When the driver converts a Python `datetime` with `ZoneInfo` via `Neo4jDateTime.from_native()`, internal paths call `tzinfo.utcoffset(neo4j_datetime)` — passing a **neo4j** `DateTime`, not a Python `datetime`. CPython's **`_zoneinfo` C extension** then reads `datetime`-only fields (e.g. `fold`) on the wrong object type, yielding **SIGSEGV** (exit -11) or garbage offsets. On neo4j 5.x the same path often raised `ValueError` instead of segfaulting.
+
+**Symptoms we hit (Dana-ODB, 2026-07):** IoT `bulk_upsert`, HVAC `.save()`, and analytical cascade Cypher failed or crashed when persisting facility-local `ZoneInfo` datetimes to `DateTimeNeo4jFormatProperty` fields or bulk row dicts.
+
+### pytz vs zoneinfo (why we do not just switch)
+
+| | **zoneinfo** (our app layer) | **pytz** (driver's design center) |
+|---|---|---|
+| Status | Stdlib since 3.9; Django 5+ default | Third-party, maintenance mode |
+| Attach tz | `datetime(..., tzinfo=ZoneInfo("…"))` | Named zones: `pytz.timezone("…").localize(naive)` |
+| Duck typing | Strict — C `zoneinfo` assumes real `datetime` | Looser — often works with neo4j duck-types |
+| Neo4j `from_native` + named zone | **Unsafe** until CPython/driver fix | **Supported** per driver docs |
+
+We keep **`zoneinfo` in application code** and coerce only at the **Neo4j persistence boundary**.
+
+### Relevant GitHub issues and docs
+
+**neo4j/neo4j-python-driver**
+
+| Link | Notes |
+|---|---|
+| [Issue #1103](https://github.com/neo4j/neo4j-python-driver/issues/1103) — `DateTime.now()` doesn't accept `datetime.UTC` tzinfo | Maintainer **@robsdedude**: driver designed for **pytz**; **`zoneinfo` can segfault** with `neo4j.time`; recommends pytz. Closed with guidance, not a zoneinfo fix. |
+| [PR #1104](https://github.com/neo4j/neo4j-python-driver/pull/1104) — temporal tzinfo improvements | Docs clarified **pytz-only**; minor `DateTime.now` tweaks — other tzinfo still not fully supported. |
+| [PR #914](https://github.com/neo4j/neo4j-python-driver/pull/914) — `datetime.timezone` serialization | Fixed-offset **serialization only** (pandas 2); not `zoneinfo`; server returns still use pytz. |
+| [PR #625](https://github.com/neo4j/neo4j-python-driver/pull/625) — dehydrate native datetimes with zoneinfo | Sending **native** `datetime` with `zoneinfo` to Bolt — does **not** make `neo4j.time.DateTime` + `zoneinfo` safe internally. |
+| [Issue #1318](https://github.com/neo4j/neo4j-python-driver/issues/1318) — transition away from pytz | Open feature request (2026-07-04); no maintainer commitment yet. |
+| [Driver docs — temporal types](https://neo4j.com/docs/api/python-driver/current/types/temporal.html) | Warning: other `tzinfo` implementations "not supported and unlikely to work well". |
+
+**python/cpython (root crash)**
+
+| Link | Notes |
+|---|---|
+| [Issue #125318](https://github.com/python/cpython/issues/125318) — Segfault from `zoneinfo` with custom DateTime class | Filed by Neo4j driver maintainer; repro uses duck-typed datetime like `neo4j.time.DateTime`. **Still open** on 3.14.4. |
+| [PR #139132](https://github.com/python/cpython/pull/139132) | Proposed fix (dispatch to Python attribute lookups for non-`datetime`); not in our Python build yet. |
+
+**When to re-check:** If `test_neo4j_zoneinfo_driver_compat.py` subprocess probes start exiting 0 without coercion, revisit removing the patch.
+
+### Our workaround (agent_neo)
+
+**Single primitive** — `coerce_to_fixed_offset_for_neo4j(value)` in `agent_neo.util.django_neomodel.models`:
+
+1. Pre-compute offset from the **Python** `datetime` (safe with `ZoneInfo`).
+2. If the tzinfo has a zone name (`ZoneInfo.key` or `pytz.zone`), replace tzinfo with `_ZoneNamePreservingTzInfo` — fixed offset + `.key` so Bolt still sends named-zone ZonedDateTime (`b"i"`), without calling `_zoneinfo` on neo4j types.
+3. If no zone name, use `datetime.timezone(offset)` (offset-only in Neo4j).
+
+**Three enforcement points** (minimal set — bulk paths bypass NeoModel `deflate`):
+
+| Layer | Mechanism | Location |
+|---|---|---|
+| ORM `.save()` / property deflate | `apply_neo4j_datetime_coercion_patch()` patches `DateTimeNeo4jFormatProperty.deflate` | `forge_odb.util.django.setup.ensure_django_setup()` |
+| IoT bulk `UNWIND` rows | explicit `coerce_to_fixed_offset_for_neo4j` before `Neo4jDateTime.from_native` | `forge_odb/iot/_django/models.py` `bulk_upsert` |
+| Cascade / bulk Cypher SET | `_to_neo4j_datetime()` wraps same coercion | `analytical_product/computed_product_cascade.py` |
+
+**Not the same helper:** `coerce_to_utc_for_neo4j_datetime()` is for **domain semantics** (facility-local wall clock → UTC instant), not the zoneinfo crash. UTC datetimes do not need `_ZoneNamePreservingTzInfo`.
+
+### Simplicity assessment (2026-07)
+
+The workaround is **not spaghetti** — it is a thin boundary adapter:
+
+- One coercion function + one small `tzinfo` wrapper with a documented reason.
+- One global ORM monkey-patch (unavoidable without forking neomodel/driver).
+- **Two** explicit call sites where Cypher bypasses properties (necessary; not scattered).
+
+**Possible minor DRY:** a shared `to_neo4j_datetime(dt) -> Neo4jDateTime` wrapping `from_native(coerce(...))` for bulk writers — cosmetic only.
+
+**Rejected alternatives:** (1) pytz everywhere in app code — fights Django/modern stack; (2) plain `datetime.timezone(offset)` only — simpler but drops named zone in Neo4j; (3) waiting for driver 6.x alone — **6.2.0 still segfaults**; fix is upstream in CPython #125318.
 
 ### Cardinality (Neomodel 6 strict default)
 
