@@ -97,6 +97,18 @@ __all__ = ('PlantMonitoringReport',)
 from mypackage._engine.plant.monitoring_report import PlantMonitoringReport
 ```
 
+### Principle: Delete Thin Passthrough Barrels (MANDATORY)
+- **MANDATORY**: Delete `__init__.py` files (or standalone shim modules) that only re-export one or a few symbols from a sibling submodule when **no caller** imports from the package root.
+- **Keep** a barrel only when it serves a real boundary need (Django model registration, lazy `__getattr__` app facade, or multiple external package-root callers).
+- **Rationale**: Passthrough barrels hide defining modules and duplicate import paths without adding value.
+
+**Example of bad practice** (DO NOT USE):
+```python
+# WRONG — delete _engine/energy/__init__.py; callers use meter_scope_bridge directly
+from forge_odb.analytical._engine.energy.meter_scope_bridge import resolve_meter_scope_bridge
+__all__ = ('resolve_meter_scope_bridge',)
+```
+
 ### Guidelines for `__init__.py` Files
 1. **Primary Purpose**: Re-export public APIs from submodules
 2. **Keep It Minimal**: Typically 10-50 lines, mostly imports and `__all__` definitions
