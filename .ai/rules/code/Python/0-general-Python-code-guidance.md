@@ -61,6 +61,26 @@ __all__ = [
 - Their main purpose is to expose the public API of a package by importing from lower-level modules.
 - Implementation code (classes, functions, constants) should live in dedicated module files, not in `__init__.py`.
 
+### Principle: No Empty `__init__.py` Files (MANDATORY)
+- **MANDATORY**: Do **not** add or keep `__init__.py` files that are empty, whitespace-only, or contain only a module docstring (with or without `from __future__ import annotations`).
+- **Delete** such files during cleanup. Callers should import from the **defining module** (e.g. `package.submodule.symbol`) or from a package barrel that actually re-exports symbols.
+- **Rationale**: Empty `__init__.py` files add noise, imply a public API where none exists, and encourage mistaken `from package import thing` imports that only work when a barrel is maintained.
+- **When `__init__.py` is required**: Only create or keep one when it performs real work—re-exports via imports and `__all__`, or other package-level setup that belongs at the package boundary.
+
+**Example of bad practice** (DO NOT USE):
+```python
+# WRONG — delete this file; import from package.submodule instead
+"""Helpers for energy period rollup Django models."""
+```
+
+**Example of good practice**:
+```python
+# OK — real barrel at package boundary
+from .monitoring_report import PlantMonitoringReport
+
+__all__ = ('PlantMonitoringReport',)
+```
+
 ### Guidelines for `__init__.py` Files
 1. **Primary Purpose**: Re-export public APIs from submodules
 2. **Keep It Minimal**: Typically 10-50 lines, mostly imports and `__all__` definitions
