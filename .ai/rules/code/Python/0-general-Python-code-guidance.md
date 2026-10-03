@@ -16,6 +16,7 @@ alwaysApply: false
   3. **`__all__`** (if used - explicit public API declaration)
   4. **Module-level constants** (if any)
   5. **Class/function definitions**
+- **Spacing**: Put **two blank lines** between the module docstring and the first import, and **two blank lines** after the last import (see [Import Grouping Rules](#import-grouping-rules))
 - **Rationale**: `__all__` should appear immediately after imports to clearly declare the public API before any implementation code or constants
 - **Benefits**: Clear public API declaration, consistent module structure, easier to understand module exports
 
@@ -25,9 +26,11 @@ alwaysApply: false
 Module docstring describing the module's purpose.
 """
 
+
 # 1. Imports
 from dataclasses import dataclass, field
 from typing import Any, Optional
+
 
 # 2. __all__ (immediately after imports)
 __all__ = [
@@ -90,6 +93,7 @@ from mypackage._engine.reducers import *  # noqa: F403
 ```python
 # OK — explicit barrel (only when a package boundary truly needs aggregation)
 from .monitoring_report import PlantMonitoringReport
+
 
 __all__ = ('PlantMonitoringReport',)
 
@@ -167,6 +171,8 @@ class DependencySlot:
 # OK — package/__init__.py aggregates public API
 from .dependency_registry import DependencySlot
 from .mixin import AnalyticalComputedMixin
+
+
 __all__ = ('DependencySlot', 'AnalyticalComputedMixin')
 
 # OK — caller imports from defining module or package barrel
@@ -205,10 +211,12 @@ See also **Keep `__init__.py` Files Light** above: `__init__.py` is the **only**
 My Package - Brief description of what this package does.
 """
 
+
 # 1. Imports
 from .connection_manager import ConnectionManager, create_connection
 from .queries import execute_query, QueryBuilder
 from .utils import parse_config, validate_input
+
 
 # 2. __all__ (immediately after imports)
 __all__ = [
@@ -247,8 +255,10 @@ __all__ = [...]
 # autonomous_building/costar_agent_system/agents/curation/__init__.py
 """Curation agents for data and knowledge management."""
 
+
 from .physical_ontology_agent import PhysicalOntologyAgent
 from .logical_ontology_agent import LogicalOntologyAgent
+
 
 __all__ = [
     "PhysicalOntologyAgent",
@@ -275,6 +285,7 @@ __all__ = [
 ```python
 # my_package/__init__.py
 """My Package"""
+
 
 from typing import Optional, Dict, Any
 import os
@@ -634,6 +645,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 from neomodel.exceptions import DoesNotExist
 
+
 # ✅ All methods are called somewhere
 def _extract_namespace_from_uri(uri: str) -> str:
     # ... used in multiple places
@@ -677,6 +689,7 @@ def _get_point_role_and_aspect_type_caches(
 #!/usr/bin/env python3
 """Example script with proper import ordering"""
 
+
 # 1. Future imports (if needed)
 from __future__ import annotations
 
@@ -711,8 +724,10 @@ import argparse
 
 ### Import Grouping Rules
 - **Group by source**: `__future__` → standard library → third-party → internal/local (absolute) → relative local → `TYPE_CHECKING`
+- **Two blank lines after the module docstring**: Put **two blank lines** between the module docstring and the first import block. A module without a docstring starts with its imports (after any shebang line).
 - **Separate groups with single blank lines**: Put **exactly one blank line** between each import block listed above. Do not run adjacent groups together (e.g. never place `from typing import ...` immediately above `from django...` without a blank line between them).
 - **Two blank lines after imports**: After the final import block (including a trailing `if TYPE_CHECKING:` block when present), put **two blank lines** before the next module content (`__all__`, module-level constants, type aliases, or class/function definitions).
+- **Tooling**: With ruff, set `lines-after-imports = 2` under `[tool.ruff.lint.isort]` (or `[tool.ruff.isort]` in older configs). The default (`-1`) wants a single blank line before non-definition statements such as `__all__`, and reports two as `I001`. `ruff format` collapses the docstring gap to one blank line and has no setting for it, so do not run it over modules that follow this layout, or restore the second blank line afterwards.
 - **Group comments**: **RECOMMENDED** - Add comments identifying each import group for clarity (e.g., `# Standard library imports (alphabetical)`, `# Third-party imports (alphabetical)`, `# Internal imports (alphabetical)`)
 - **Within groups**: **MANDATORY** - Alphabetical ordering (unless explicitly instructed/overridden otherwise)
 - **Relative vs absolute**: Use absolute imports for cross-package imports; use relative imports for same-package modules. **Order**: absolute internal/local imports first, then relative local imports (each subgroup alphabetically ordered). Do not mix third-party imports into the local/relative groups.
@@ -1014,6 +1029,7 @@ print("SUCCESS: All CSV labels verified in database")  # Emoji removed
 # CORRECT: All imports are used
 from dataclasses import dataclass
 from typing import Any, Optional
+
 
 # CORRECT: All methods are called somewhere
 def _extract_namespace_from_uri(uri: str) -> str:
