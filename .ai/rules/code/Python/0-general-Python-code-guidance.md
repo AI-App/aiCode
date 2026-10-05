@@ -17,6 +17,7 @@ alwaysApply: false
   4. **Module-level constants** (if any)
   5. **Class/function definitions**
 - **Spacing**: Put **two blank lines** between the module docstring and the first import, and **two blank lines** after the last import (see [Import Grouping Rules](#import-grouping-rules))
+- **Spacing around `__all__` (MANDATORY)**: Put **two blank lines before AND after every `__all__` block** — the block being the whole `__all__ = (...)` / `__all__: tuple[...] = (...)` assignment, however many lines it spans. `__all__` gets the same blank-line separation as any top-level definition: two blank lines above (after the imports, or after a trailing `if TYPE_CHECKING:` block) and two blank lines below before whatever follows (module-level constants, section banners, class/function definitions). When `__all__` is the last statement in the file, nothing follows and no trailing blank lines are added
 - **Rationale**: `__all__` should appear immediately after imports to clearly declare the public API before any implementation code or constants
 - **Benefits**: Clear public API declaration, consistent module structure, easier to understand module exports
 
@@ -38,6 +39,7 @@ __all__ = [
     'SchemaNamespace',
     'AssetType',
 ]
+
 
 # 3. Module-level constants (after __all__)
 DEFAULT_SCHEMA_NAMESPACE_LABEL: str = "c-som-default"
@@ -228,6 +230,7 @@ __all__ = [
     'parse_config',
     'validate_input',
 ]
+
 
 # 3. Module-level constants (after __all__)
 DEFAULT_TIMEOUT: int = 30
@@ -727,6 +730,7 @@ import argparse
 - **Two blank lines after the module docstring**: Put **two blank lines** between the module docstring and the first import block. A module without a docstring starts with its imports (after any shebang line).
 - **Separate groups with single blank lines**: Put **exactly one blank line** between each import block listed above. Do not run adjacent groups together (e.g. never place `from typing import ...` immediately above `from django...` without a blank line between them).
 - **Two blank lines after imports**: After the final import block (including a trailing `if TYPE_CHECKING:` block when present), put **two blank lines** before the next module content (`__all__`, module-level constants, type aliases, or class/function definitions).
+- **Two blank lines around `__all__`**: The rule runs both ways — **two blank lines** precede the `__all__` block (the "two blank lines after imports" case whenever `__all__` immediately follows the imports or a trailing `if TYPE_CHECKING:` block) and **two blank lines** follow the block's closing line before whatever comes next (module-level constants, section banners, class/function definitions). Auto-formatters do not reliably preserve this (`ruff check --fix` normalizes the gap after a `TYPE_CHECKING` block down to one blank line while also accepting two), so re-check the spacing after any formatter pass.
 - **Tooling**: With ruff, set `lines-after-imports = 2` under `[tool.ruff.lint.isort]` (or `[tool.ruff.isort]` in older configs). The default (`-1`) wants a single blank line before non-definition statements such as `__all__`, and reports two as `I001`. `ruff format` collapses the docstring gap to one blank line and has no setting for it, so do not run it over modules that follow this layout, or restore the second blank line afterwards.
 - **Group comments**: **RECOMMENDED** - Add comments identifying each import group for clarity (e.g., `# Standard library imports (alphabetical)`, `# Third-party imports (alphabetical)`, `# Internal imports (alphabetical)`)
 - **Within groups**: **MANDATORY** - Alphabetical ordering (unless explicitly instructed/overridden otherwise)
